@@ -1,0 +1,143 @@
+# Archivos de simulación
+*.vcd
+*.wdb
+*.wlf
+*.vstf
+*.fst
+*.ghw
+*.lxt
+*.vvp
+
+# ModelSim/QuestaSim
+work/
+transcript
+modelsim.ini
+*.mpf
+*.mti
+*.qtl
+*.psl
+
+# Vivado
+.Xil/
+*.cache/
+*.hw/
+*.ip_user_files/
+*.sim/
+*.srcs/
+*.gen/
+*.runs/
+*.xpr
+*.xise
+*.gise
+*.ise
+vivado*.log
+vivado*.jou
+*.tcl.bak
+.hbs
+
+# Quartus II/Prime
+*.qpf
+*.qsf
+*.qws
+*.sof
+*.pof
+*.jdi
+*.pin
+*.summary
+*.smsg
+*.done
+*.rpt
+*.bak
+*.qarlog
+*.sopcinfo
+db/
+incremental_db/
+output_files/
+greybox_tmp/
+*.dpf
+*.dcp
+
+# ISE
+*.bgn
+*.bit
+*.bld
+*.cmd_log
+*.drc
+*.ll
+*.lso
+*.msd
+*.msk
+*.ncd
+*.ngc
+*.ngd
+*.ngr
+*.pad
+*.par
+*.pcf
+*.prj
+*.ptwx
+*.rbb
+*.rbd
+*.stx
+*.syr
+*.twr
+*.twx
+*.unroutes
+*.ut
+*.xpi
+*.xst
+*_xdb/
+*.gise
+*.xise
+
+# Icarus Verilog
+*.out
+*.vvp
+a.out
+
+# GHDL
+*.cf
+*.o
+
+# Temporales del sistema
+*.tmp
+*.temp
+*~
+.DS_Store
+Thumbs.db
+
+# Logs generales
+*.log
+
+# Archivos de backup
+*.bak
+*.backup
+*~
+
+# Archivos de configuración de IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Directorios de build
+build/
+dist/
+*.egg-info/
+
+# Python (si se usan scripts)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.venv
+
+# Archivos de documentación generados
+*.pdf
+*.docx
+!docs/*.pdf
+!docs/*.docx
