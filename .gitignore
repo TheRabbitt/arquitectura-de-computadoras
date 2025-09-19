@@ -141,3 +141,14 @@ venv/
 *.docx
 !docs/*.pdf
 !docs/*.docx
+
+# Archivos Zone.Identifier de Windows
+*:Zone.Identifier
+*.Zone.Identifier
+*:Zone.Identifier:*
+
+# Archivos adicionales de Windows que pueden aparecer
+desktop.ini
+*.lnk
+Thumbs.db
+ehthumbs.db
