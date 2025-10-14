@@ -15,8 +15,7 @@ module baud_rate_gen_tb;
     ) uut (
         .clk(clk),
         .reset(reset),
-        .tick(tick),
-        .counter_debug(counter_debug)
+        .tick(tick)
     );
     
     // Generar clock de 50MHz (periodo 20ns)

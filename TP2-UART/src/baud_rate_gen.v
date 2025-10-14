@@ -8,14 +8,11 @@ module baud_rate_gen #(
     input wire clk,                   // Clock del sistema 50MHz (Basys 3)
     input wire reset,                 // Reset asíncrono
     output reg tick,                  // Tick generado cada DVSR ciclos
-    output wire [DVSR_BIT-1:0] counter_debug  // Salida de debug (opcional)
 );
 
     // Contador módulo DVSR
     reg [DVSR_BIT-1:0] counter;
     
-    // Asignar counter a la salida de debug
-    assign counter_debug = counter;
     
     // Bloque inicial para mostrar los parámetros calculados
     initial begin

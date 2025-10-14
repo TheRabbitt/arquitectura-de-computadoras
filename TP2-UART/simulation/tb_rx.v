@@ -14,8 +14,7 @@ module uart_rx_tb;
     ) brg (
         .clk(clk),
         .reset(reset),
-        .tick(s_tick),
-        .counter_debug()  // No lo vamos a usar aca
+        .tick(s_tick)
     );
     
     // Instanciar módulo RX
