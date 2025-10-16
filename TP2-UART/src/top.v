@@ -33,11 +33,11 @@ module top (
     // INSTANCIA: Baud Rate Generator (50MHz → 19200 bps)
     // ============================================================
     baud_rate_gen #(
-        .CLK_FREQ(50000000),      // Frecuencia del clock en Hz
+        .CLK_FREQ(100000000),      // Frecuencia del clock en Hz
         .BAUD_RATE(19200),        // Baud rate deseado
         .OVERSAMPLING(16),        // Factor de oversampling
-        .DVSR(163),               // Divisor calculado
-        .DVSR_BIT(8)              // Bits para el contador
+        .DVSR(326),               // Divisor calculado
+        .DVSR_BIT(9)              // Bits para el contador
     ) brg_inst (
         .clk(clk),
         .reset(reset),

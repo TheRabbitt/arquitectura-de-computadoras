@@ -1,13 +1,13 @@
 module baud_rate_gen #(
-    parameter CLK_FREQ = 50000000,    // Frecuencia del clock en Hz (50 MHz para Basys 3)
+    parameter CLK_FREQ = 100000000,    // Frecuencia del clock en Hz (50 MHz para Basys 3)
     parameter BAUD_RATE = 19200,      // Baud rate deseado (19200 bps)
     parameter OVERSAMPLING = 16,      // Factor de oversampling (16x)
-    parameter DVSR = 163,             // Divisor: CLK_FREQ/(BAUD_RATE*OVERSAMPLING) ≈ 163
-    parameter DVSR_BIT = 8            // Bits necesarios para contar hasta 163
+    parameter DVSR = 326,             // Divisor: CLK_FREQ/(BAUD_RATE*OVERSAMPLING) ≈ 163
+    parameter DVSR_BIT = 9            // Bits necesarios para contar hasta 163
 )(
     input wire clk,                   // Clock del sistema 50MHz (Basys 3)
     input wire reset,                 // Reset asíncrono
-    output reg tick,                  // Tick generado cada DVSR ciclos
+    output reg tick                  // Tick generado cada DVSR ciclos
 );
 
     // Contador módulo DVSR

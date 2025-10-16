@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Script para probar comunicación UART con la placa FPGA (Sistema UART-ALU)
-Permite enviar operaciones y recibir resultados
+Versión mejorada con mejor manejo de timing y debug
 """
 
 import serial
@@ -56,13 +56,21 @@ def open_serial_port(port_name):
         )
         print(f"✓ Puerto {port_name} abierto correctamente")
         print(f"  Baudrate: {BAUD_RATE} bps")
+        
+        # Esperar a que el puerto se estabilice
+        time.sleep(0.1)
+        
+        # Limpiar buffers
+        ser.reset_input_buffer()
+        ser.reset_output_buffer()
+        
         return ser
     except serial.SerialException as e:
         print(f"✗ Error al abrir puerto: {e}")
         return None
 
 
-def send_operation(ser, operation_name, operand_a, operand_b):
+def send_operation(ser, operation_name, operand_a, operand_b, verbose=True):
     """
     Envía una operación a la placa
     Formato: [opcode (1 byte)] [operand_a (1 byte)] [operand_b (1 byte)]
@@ -78,46 +86,70 @@ def send_operation(ser, operation_name, operand_a, operand_b):
     data = bytes([opcode, operand_a & 0xFF, operand_b & 0xFF])
     
     try:
+        # Limpiar buffer de entrada antes de enviar
+        ser.reset_input_buffer()
+        
+        # Enviar los 3 bytes
         ser.write(data)
-        print(f"\n[TX] Enviando operación:")
-        print(f"  Operación: {operation_name} (0x{opcode:02X})")
-        print(f"  Operando A: {operand_a} (0x{operand_a:02X})")
-        print(f"  Operando B: {operand_b} (0x{operand_b:02X})")
+        ser.flush()
+        
+        if verbose:
+            print(f"\n[TX] Enviando operación:")
+            print(f"  Operación: {operation_name} (0x{opcode:02X})")
+            print(f"  Operando A: {operand_a} (0x{operand_a:02X})")
+            print(f"  Operando B: {operand_b} (0x{operand_b:02X})")
+            print(f"  Bytes enviados: {' '.join([f'0x{b:02X}' for b in data])}")
+        
         return True
     except serial.SerialException as e:
         print(f"✗ Error al escribir: {e}")
         return False
 
 
-def receive_result(ser):
+def receive_result(ser, verbose=True):
     """
     Recibe el resultado y los flags de la placa
     Formato: [resultado (1 byte)] [flags (1 byte)]
     Flags: {6'b0, carry, zero}
     """
     try:
-        # Esperar el resultado (1 byte)
-        result_byte = ser.read(1)
-        if not result_byte:
-            print("✗ Timeout esperando resultado")
+        # Esperar un momento para que la FPGA procese
+        time.sleep(0.2)
+        
+        # Verificar cuántos bytes hay disponibles
+        available = ser.in_waiting
+        if verbose:
+            print(f"\n[RX] Bytes disponibles en buffer: {available}")
+        
+        # Leer resultado (primer byte)
+        data1 = ser.read(1)
+        
+        if len(data1) < 1:
+            print(f"✗ Timeout: No se recibió byte de resultado")
             return None, None, None
         
-        result = result_byte[0]
+        result = data1[0]
         
-        # Esperar los flags (1 byte)
-        flags_byte = ser.read(1)
-        if not flags_byte:
-            print("✗ Timeout esperando flags")
+        # Pequeña pausa entre lecturas
+        time.sleep(0.05)
+        
+        # Leer flags (segundo byte)
+        data2 = ser.read(1)
+        
+        if len(data2) < 1:
+            print(f"✗ Timeout: No se recibió byte de flags")
             return result, None, None
         
-        flags = flags_byte[0]
-        carry = flags & 0x01
-        zero = (flags >> 1) & 0x01
+        flags = data2[0]
+        carry = (flags & 0x02) >> 1
+        zero =  flags & 0x01
         
-        print(f"\n[RX] Resultado recibido:")
-        print(f"  Resultado: {result} (0x{result:02X})")
-        print(f"  Carry flag: {carry}")
-        print(f"  Zero flag: {zero}")
+        if verbose:
+            print(f"\n[RX] Resultado recibido:")
+            print(f"  Resultado: {result} (0x{result:02X}, {result:08b}b)")
+            print(f"  Flags byte: 0x{flags:02X} ({flags:08b}b)")
+            print(f"  Bit 0 (Zero): {zero}")
+            print(f"  Bit 1 (Carry):  {carry}")
         
         return result, carry, zero
     except serial.SerialException as e:
@@ -142,9 +174,10 @@ def interactive_mode(ser):
             print("\n1. Enviar operación")
             print("2. Ver operaciones disponibles")
             print("3. Test automatizado")
-            print("4. Salir")
+            print("4. Limpiar buffers")
+            print("5. Salir")
             
-            choice = input("\nSelecciona opción (1-4): ").strip()
+            choice = input("\nSelecciona opción (1-5): ").strip()
             
             if choice == '1':
                 print("\nOperaciones disponibles:")
@@ -162,7 +195,6 @@ def interactive_mode(ser):
                         continue
                     
                     if send_operation(ser, op_name, a, b):
-                        time.sleep(0.5)  # Esperar a que se procese
                         result, carry, zero = receive_result(ser)
                         
                         if result is not None:
@@ -178,6 +210,11 @@ def interactive_mode(ser):
                 automated_test(ser)
             
             elif choice == '4':
+                ser.reset_input_buffer()
+                ser.reset_output_buffer()
+                print("✓ Buffers limpiados")
+            
+            elif choice == '5':
                 print("\nSaliendo...")
                 break
             
@@ -189,63 +226,78 @@ def interactive_mode(ser):
             break
         except Exception as e:
             print(f"✗ Error: {e}")
+            import traceback
+            traceback.print_exc()
 
 
 def automated_test(ser):
     """Ejecuta pruebas automatizadas"""
+    # Formato: (operación, a, b, resultado_esperado, carry_esperado, zero_esperado)
     tests = [
-        ("ADD", 5, 3, 8, 0, 0),         # 5 + 3 = 8
-        ("SUB", 10, 4, 6, 0, 0),        # 10 - 4 = 6
-        ("AND", 0xAA, 0x55, 0, 0, 1),   # 0xAA & 0x55 = 0 (zero flag)
-        ("OR", 0x0F, 0xF0, 0xFF, 0, 0), # 0x0F | 0xF0 = 0xFF
-        ("XOR", 0xFF, 0xFF, 0, 0, 1),   # 0xFF ^ 0xFF = 0 (zero flag)
-        ("ADD", 127, 1, 128, 1, 0),     # 127 + 1 = 128 (overflow)
+        ("ADD", 5, 3, 8, 0, 0),         # 5 + 3 = 8, sin carry, sin zero
+        ("SUB", 10, 4, 6, 0, 0),        # 10 - 4 = 6, sin carry, sin zero
+        ("AND", 0xAA, 0x55, 0, 1, 0),   # 0xAA & 0x55 = 0, sin carry, zero=1
+        ("OR", 0x0F, 0xF0, 0xFF, 0, 0), # 0x0F | 0xF0 = 0xFF, sin carry, sin zero
+        ("XOR", 0xFF, 0xFF, 0, 1, 0),   # 0xFF ^ 0xFF = 0, sin carry, zero=1
+        ("ADD", 127, 1, 128, 0, 1),     # 127 + 1 = 128, carry=1 (overflow), sin zero
     ]
     
     print("\n" + "="*60)
     print("PRUEBAS AUTOMATIZADAS")
     print("="*60)
     
+    # Limpiar buffers al inicio
+    ser.reset_input_buffer()
+    ser.reset_output_buffer()
+    time.sleep(0.1)
+    
     passed = 0
     failed = 0
     
-    for i, (op, a, b, expected_result, expected_carry, expected_zero) in enumerate(tests, 1):
-        print(f"\nPrueba {i}: {op} ({a} {op} {b})")
+    for i, (op, a, b, expected_result, expected_zero, expected_carry) in enumerate(tests, 1):
+        print(f"\n{'='*60}")
+        print(f"Prueba {i}/{len(tests)}: {op} ({a} {op} {b})")
+        print(f"{'='*60}")
         
-        if send_operation(ser, op, a, b):
-            time.sleep(0.5)
-            result, carry, zero = receive_result(ser)
+        if send_operation(ser, op, a, b, verbose=True):
+            result, carry, zero = receive_result(ser, verbose=True)
             
             if result is not None:
                 result_ok = (result == expected_result)
                 carry_ok = (carry == expected_carry)
                 zero_ok = (zero == expected_zero)
                 
+                print(f"\nVerificación:")
+                print(f"  Resultado: {result} {'✓' if result_ok else '✗'} (esperado: {expected_result})")
+                print(f"  Carry:     {carry} {'✓' if carry_ok else '✗'} (esperado: {expected_carry})")
+                print(f"  Zero:      {zero} {'✓' if zero_ok else '✗'} (esperado: {expected_zero})")
+                
                 if result_ok and carry_ok and zero_ok:
-                    print("✓ PASS")
+                    print("\n✓ PASS")
                     passed += 1
                 else:
-                    print("✗ FAIL")
-                    if not result_ok:
-                        print(f"    Resultado: esperado {expected_result}, obtuvo {result}")
-                    if not carry_ok:
-                        print(f"    Carry: esperado {expected_carry}, obtuvo {carry}")
-                    if not zero_ok:
-                        print(f"    Zero: esperado {expected_zero}, obtuvo {zero}")
+                    print("\n✗ FAIL")
                     failed += 1
             else:
                 print("✗ FAIL (no response)")
                 failed += 1
+        else:
+            print("✗ FAIL (send error)")
+            failed += 1
+        
+        # Pausa entre pruebas
+        time.sleep(0.5)
     
     print("\n" + "="*60)
     print(f"Resultados: {passed} pasadas, {failed} fallidas")
+    print(f"Tasa de éxito: {100*passed/(passed+failed):.1f}%")
     print("="*60)
 
 
 def main():
     """Función principal"""
     print("="*60)
-    print("UART-ALU Test Tool")
+    print("UART-ALU Test Tool - Versión Mejorada")
     print("="*60)
     
     if len(sys.argv) > 1:

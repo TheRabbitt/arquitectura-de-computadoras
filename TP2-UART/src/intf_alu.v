@@ -26,18 +26,16 @@ module intf_alu #(
     input wire tx_done_tick                // Señal de transmisión completa
 );
 
-    // Estados de la FSM
+    // Estados de la FSM (3 bits para 6 estados)
     localparam [2:0]
         IDLE           = 3'b000,  // Esperando primer byte (operación)
         WAIT_A         = 3'b001,  // Esperando operando A
         WAIT_B         = 3'b010,  // Esperando operando B
         EXEC_ALU       = 3'b011,  // Ejecutando operación en ALU
         SEND_RESULT    = 3'b100,  // Enviando resultado
-        WAIT_TX_1      = 3'b110,  // Esperando a que TX termine (entre resultado y flags)
-        SEND_FLAGS     = 3'b101,  // Envía byte 2 (flags)
-        WAIT_TX_2      = 3'b111;  // Esperando a que TX termine (después de flags)
+        SEND_FLAGS     = 3'b101;  // Envía byte 2 (flags)
     
-    // Registros de estado
+    // Registros de estado (3 bits)
     reg [2:0] state_reg, state_next;
     
     // Registros para almacenar datos
@@ -48,37 +46,7 @@ module intf_alu #(
     reg carry_reg, carry_next;              // Flag de carry capturado
     reg zero_reg, zero_next;                // Flag de zero capturado
     
-    // ============================================================
-    // REGISTROS PARA SINCRONIZACIÓN DE PULSOS
-    // ============================================================
-    reg tx_done_tick_r1, tx_done_tick_r2;  // Pipeline para detectar flanco
-    reg rx_done_tick_r1, rx_done_tick_r2;  // Pipeline para detectar flanco
-    wire tx_done_pulse;                     // Pulso sincronizado de tx_done_tick
-    wire rx_done_pulse;                     // Pulso sincronizado de rx_done_tick
-    
-    // Detectar flancos (transición 0→1)
-    assign tx_done_pulse = tx_done_tick_r1 && ~tx_done_tick_r2;
-    assign rx_done_pulse = rx_done_tick_r1 && ~rx_done_tick_r2;
-    
-    // Pipeline de sincronización
-    always @(posedge clk) begin
-        if (reset) begin
-            tx_done_tick_r1 <= 1'b0;
-            tx_done_tick_r2 <= 1'b0;
-            rx_done_tick_r1 <= 1'b0;
-            rx_done_tick_r2 <= 1'b0;
-        end
-        else begin
-            tx_done_tick_r1 <= tx_done_tick;
-            tx_done_tick_r2 <= tx_done_tick_r1;
-            rx_done_tick_r1 <= rx_done_tick;
-            rx_done_tick_r2 <= rx_done_tick_r1;
-        end
-    end
-    
-    // ============================================================
     // Registro de estado (con reset asíncrono)
-    // ============================================================
     always @(posedge clk) begin
         if (reset) begin
             state_reg <= IDLE;
@@ -100,9 +68,7 @@ module intf_alu #(
         end
     end
     
-    // ============================================================
     // Lógica de próximo estado
-    // ============================================================
     always @(*) begin
         // Valores por defecto
         state_next = state_reg;
@@ -125,7 +91,7 @@ module intf_alu #(
             // ====== ESTADO IDLE ======
             IDLE: begin
                 // Estado inicial: esperando código de operación
-                if (rx_done_pulse) begin
+                if (rx_done_tick) begin
                     // Recibimos el código de operación (primer byte)
                     op_next = rx_data[5:0];  // Usar solo 6 bits para la operación
                     state_next = WAIT_A;
@@ -135,7 +101,7 @@ module intf_alu #(
             // ====== ESTADO WAIT_A ======
             WAIT_A: begin
                 // Esperando operando A (segundo byte)
-                if (rx_done_pulse) begin
+                if (rx_done_tick) begin
                     a_next = rx_data;
                     state_next = WAIT_B;
                 end
@@ -144,7 +110,7 @@ module intf_alu #(
             // ====== ESTADO WAIT_B ======
             WAIT_B: begin
                 // Esperando operando B (tercer byte)
-                if (rx_done_pulse) begin
+                if (rx_done_tick) begin
                     b_next = rx_data;
                     state_next = EXEC_ALU;
                 end
@@ -152,38 +118,26 @@ module intf_alu #(
             
             // ====== ESTADO EXEC_ALU ======
             EXEC_ALU: begin
-                // Ejecutar operación en la ALU
-                alu_start = 1'b1;  // Señal de inicio a la ALU
-                
-                // Capturar el resultado y los flags
+                // Las señales de la ALU ya están conectadas (combinacional)
+                // Capturar el resultado y los flags en este ciclo
                 result_next = alu_result;
                 carry_next = alu_carry;
                 zero_next = alu_zero;
-
-                // Pasar al siguiente estado después de 1 ciclo
+                
+                // Ir directamente a enviar resultado
                 state_next = SEND_RESULT;
             end
             
             // ====== ESTADO SEND_RESULT ======
-            // Enviar el resultado de la operación
             SEND_RESULT: begin
-                tx_start = 1'b1;
+                // Preparar dato a enviar
                 tx_data = result_reg;
                 
-                // Usar el flanco detectado para transicionar
-                if (tx_done_pulse) begin
-                    state_next = WAIT_TX_1;
-                end
-            end
-            
-            // ====== ESTADO WAIT_TX_1 (NUEVO) ======
-            // Esperar a que tx_done_tick caiga y desactivar tx_start
-            // Esto evita que UART_TX se reinicie inmediatamente
-            WAIT_TX_1: begin
-                tx_start = 1'b0;  // Desactivar tx_start
+                // Pulso de inicio de transmisión solo si no hemos empezado
+                tx_start = 1'b1;
                 
-                // Esperar a que el pulso caiga completamente
-                if (!tx_done_tick_r1) begin
+                // Esperar a que TX termine
+                if (tx_done_tick) begin
                     state_next = SEND_FLAGS;
                 end
             end
@@ -191,23 +145,12 @@ module intf_alu #(
             // ====== ESTADO SEND_FLAGS ======
             SEND_FLAGS: begin
                 // Enviar segundo byte: flags empaquetados
-                // Formato: {6'b0, zero, carry}
+                // Formato: {6'b0, carry, zero}
+                tx_data = {6'b0, carry_reg, zero_reg};
                 tx_start = 1'b1;
-                tx_data = {6'b0, zero_reg, carry_reg};
                 
-                // Usar el flanco detectado para transicionar
-                if (tx_done_pulse) begin
-                    state_next = WAIT_TX_2;
-                end
-            end
-            
-            // ====== ESTADO WAIT_TX_2 (NUEVO) ======
-            // Esperar a que tx_done_tick caiga y desactivar tx_start
-            WAIT_TX_2: begin
-                tx_start = 1'b0;  // Desactivar tx_start
-                
-                // Esperar a que el pulso caiga completamente
-                if (!tx_done_tick_r1) begin
+                // Cuando termine, volver a IDLE
+                if (tx_done_tick) begin
                     state_next = IDLE;
                 end
             end
