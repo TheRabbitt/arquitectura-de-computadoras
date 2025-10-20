@@ -1,87 +1,103 @@
-// Testbench completo: Sistema UART-ALU con TX integrado
-module uart_tx_tb;
-    reg clk, reset;
-    reg rx_line;                // Línea serial de entrada (para RX)
-    wire tx_line;               // Línea serial de salida (del TX)
-    wire s_tick;
+`timescale 1ns / 1ps
+
+module tb_alu_uart_system;
+
+    // Parámetros
+    parameter CLK_PERIOD = 10;           // 100MHz clock (10ns period)
+    parameter CLK_FREQ = 100000000;
+    parameter BAUD_RATE = 19200;
+    parameter OVERSAMPLING = 16;
+    parameter DVSR = 326;
+    parameter DVSR_BIT = 9;
+    parameter DBIT = 8;
+    parameter ALU_WIDTH = 8;
+    
+    // Bit period para UART (en ns)
+    // CRÍTICO: Debe coincidir exactamente con el timing del baud rate generator
+    // BIT_PERIOD = DVSR * OVERSAMPLING * CLK_PERIOD
+    parameter BIT_PERIOD = DVSR * OVERSAMPLING * CLK_PERIOD; // 326 * 16 * 10ns = 52160ns
+    
+    // Señales del sistema
+    reg clk;
+    reg reset;
+    wire tick;
+    
+    // Señales UART
+    wire rx_line;
+    wire tx_line;
+    reg tx_sim;  // Para simular transmisión desde PC
+    
+    // Señales internas RX
     wire rx_done_tick;
-    wire [7:0] rx_data;
-    wire [7:0] alu_a, alu_b;
-    wire [5:0] alu_op;
-    wire alu_start;
-    wire [7:0] alu_result;
-    wire alu_carry, alu_zero;
+    wire [DBIT-1:0] rx_data;
+    
+    // Señales internas TX
     wire tx_start;
-    wire [7:0] tx_data;
+    wire [DBIT-1:0] tx_data;
     wire tx_done_tick;
     
-    // Parámetros de timing
-    localparam CLK_PERIOD = 20;  // 50 MHz
-    localparam BIT_PERIOD = 163 * 16 * CLK_PERIOD;  // Tiempo de 1 bit UART
+    // Señales ALU
+    wire [ALU_WIDTH-1:0] alu_a;
+    wire [ALU_WIDTH-1:0] alu_b;
+    wire [5:0] alu_op;
+    wire alu_start;
+    wire [ALU_WIDTH-1:0] alu_result;
+    wire alu_carry;
+    wire alu_zero;
     
-    // ====== VARIABLES PARA MEJORAR EL DEBUG ======
-    reg [7:0] tx_data_last;     // Guardar último tx_data transmitido
-    reg tx_start_last;          // Guardar último estado de tx_start
-    integer tx_byte_count;      // Contar bytes transmitidos
+    // Variables para testbench
+    reg [7:0] expected_result;
+    reg expected_carry;
+    reg expected_zero;
+    integer test_count;
+    integer pass_count;
+    integer fail_count;
     
-    // Instanciar Baud Rate Generator
+    // Instancia del Baud Rate Generator
     baud_rate_gen #(
-        .CLK_FREQ(50000000),
-        .BAUD_RATE(19200),
-        .OVERSAMPLING(16),
-        .DVSR_BIT(8)
-    ) brg_inst (
+        .CLK_FREQ(CLK_FREQ),
+        .BAUD_RATE(BAUD_RATE),
+        .OVERSAMPLING(OVERSAMPLING),
+        .DVSR(DVSR),
+        .DVSR_BIT(DVSR_BIT)
+    ) baud_gen (
         .clk(clk),
         .reset(reset),
-        .tick(s_tick)
+        .tick(tick)
     );
     
-    // Instanciar UART RX
+    // Instancia UART RX
     uart_rx #(
-        .DBIT(8),
-        .SB_TICK(16)
-    ) rx_inst (
+        .DBIT(DBIT),
+        .SB_TICK(OVERSAMPLING)
+    ) uart_rx_inst (
         .clk(clk),
         .reset(reset),
         .rx(rx_line),
-        .s_tick(s_tick),
+        .s_tick(tick),
         .rx_done_tick(rx_done_tick),
         .dout(rx_data)
     );
     
-    // Instanciar UART TX
+    // Instancia UART TX
     uart_tx #(
-        .DBIT(8),
-        .SB_TICK(16)
-    ) tx_inst (
+        .DBIT(DBIT),
+        .SB_TICK(OVERSAMPLING)
+    ) uart_tx_inst (
         .clk(clk),
         .reset(reset),
         .tx_start(tx_start),
-        .s_tick(s_tick),
+        .s_tick(tick),
         .din(tx_data),
         .tx_done_tick(tx_done_tick),
         .tx(tx_line)
     );
     
-    // Instanciar ALU
-    alu #(
-        .NB_IN(8),
-        .NB_OUT(8),
-        .NB_OP(6)
-    ) alu_inst (
-        .i_a(alu_a),
-        .i_b(alu_b),
-        .i_op(alu_op),
-        .o_outresult(alu_result),
-        .o_carry(alu_carry),
-        .o_zero(alu_zero)
-    );
-    
-    // Instanciar interfaz ALU
+    // Instancia de la Interfaz ALU
     intf_alu #(
-        .DBIT(8),
-        .ALU_WIDTH(8)
-    ) intf_inst (
+        .DBIT(DBIT),
+        .ALU_WIDTH(ALU_WIDTH)
+    ) intf_alu_inst (
         .clk(clk),
         .reset(reset),
         .rx_done_tick(rx_done_tick),
@@ -98,310 +114,340 @@ module uart_tx_tb;
         .tx_done_tick(tx_done_tick)
     );
     
-    // Clock de 50MHz
-    initial clk = 0;
-    always #10 clk = ~clk;
+    // Instancia de la ALU
+    alu #(
+        .NB_IN(ALU_WIDTH),
+        .NB_OUT(ALU_WIDTH),
+        .NB_OP(6)
+    ) alu_inst (
+        .i_a(alu_a),
+        .i_b(alu_b),
+        .i_op(alu_op),
+        .o_outresult(alu_result),
+        .o_carry(alu_carry),
+        .o_zero(alu_zero)
+    );
     
-    // Tarea para enviar un byte por UART RX (simula PC enviando datos)
-    task send_uart_byte;
+    // Conexión de línea RX (simulada desde testbench)
+    assign rx_line = tx_sim;
+    
+    // Generación del clock
+    initial begin
+        clk = 0;
+        forever #(CLK_PERIOD/2) clk = ~clk;
+    end
+    
+    // Task para transmitir un byte por UART (simula PC enviando)
+    task uart_send_byte;
         input [7:0] data;
         integer i;
         begin
-            $display("  [TX_PC] Enviando byte: 0x%h (%d)", data, data);
+            // $display("[%0t] Enviando byte: 0x%02h (%d)", $time, data, data);
             
             // Start bit
-            rx_line = 0;
+            tx_sim = 0;
             #BIT_PERIOD;
             
             // Data bits (LSB first)
             for (i = 0; i < 8; i = i + 1) begin
-                rx_line = data[i];
+                tx_sim = data[i];
                 #BIT_PERIOD;
             end
             
             // Stop bit
-            rx_line = 1;
-            #BIT_PERIOD;
+            tx_sim = 1;
+            #(BIT_PERIOD/2);
+            
+            // Pequeña pausa entre bytes
+            // #(BIT_PERIOD * 2);
         end
     endtask
     
-    // Tarea para recibir un byte del TX (simula PC recibiendo datos)
-    task receive_uart_byte;
+    // Task para recibir un byte por UART (simula PC recibiendo)
+    task uart_receive_byte;
         output [7:0] data;
         integer i;
         begin
-            data = 8'h00;
+            // $display("Recibiendo nuevo byte");
+            // Esperar start bit
+            wait(tx_line == 0);
+            #(BIT_PERIOD/2); // Ir al medio del start bit
             
-            // Esperar Start bit
-            @(negedge tx_line);
-            $display("  [RX_PC] Start bit detectado");
-            
-            // Ir al medio del Start bit
-            #(BIT_PERIOD / 2);
-            
-            // Muestrear bits de datos en el medio de cada bit
-            for (i = 0; i < 8; i = i + 1) begin
-                #BIT_PERIOD;
-                data[i] = tx_line;
+            // Verificar start bit
+            if (tx_line != 0) begin
+                $display("[%0t] ERROR: Start bit invalido", $time);
             end
             
-            // Verificar Stop bit
-            #BIT_PERIOD;
-            if (tx_line == 1'b1)
-                $display("  [RX_PC] Stop bit OK - Byte recibido: 0x%h (%d)", data, data);
-            else
-                $display("  [RX_PC] ERROR: Stop bit incorrecto");
+            #BIT_PERIOD; // Ir al primer bit de datos
+            
+            // Leer data bits (LSB first)
+            for (i = 0; i < 8; i = i + 1) begin
+                data[i] = tx_line;
+                #BIT_PERIOD;
+            end
+            
+            // Verificar stop bit
+            if (tx_line != 1) begin
+                $display("[%0t] ERROR: Stop bit invalido", $time);
+            end
+            
+            // $display("[%0t] Byte recibido: 0x%02h (%d)", $time, data, data);
         end
     endtask
     
-    // Variables para recepción
-    reg [7:0] received_result;
-    reg [7:0] received_flags;
-    
-    // ====== MONITOR DE TX CON FILTRO ======
-    // Solo mostrar cuando tx_start cambia de 0 a 1
-    always @(posedge clk) begin
-        tx_data_last <= tx_data;
-        tx_start_last <= tx_start;
+    // Task para ejecutar un test completo
+    task test_alu_operation;
+        input [5:0] op_code;
+        input [7:0] operand_a;
+        input [7:0] operand_b;
+        input [7:0] exp_result;
+        input exp_carry;
+        input exp_zero;
+        input [256*8:1] op_name;
         
-        // Detectar transición 0→1 en tx_start (flanco positivo)
-        if (tx_start && !tx_start_last) begin
-            tx_byte_count = tx_byte_count + 1;
-            $display("  [TX] INICIAR transmisión #%0d: tx_data = 0x%h", tx_byte_count, tx_data);
-        end
+        reg [7:0] received_result;
+        reg [7:0] received_flags;
+        reg recv_carry, recv_zero;
         
-        // Mostrar cuando se completa la transmisión
-        if (tx_done_tick) begin
-            $display("  [TX] ✓ Transmisión completada (byte #%0d)", tx_byte_count);
+        begin
+            test_count = test_count + 1;
+            $display("\n------------------------------------------------------");
+            $display("TEST %0d: %0s", test_count, op_name);
+            $display("--------------------------------------------------------");
+            $display("Operando A: %0d (0x%02h, 0b%08b)", $signed(operand_a), operand_a, operand_a);
+            $display("Operando B: %0d (0x%02h, 0b%08b)", $signed(operand_b), operand_b, operand_b);
+            $display("Operacion: 0b%06b", op_code);
+            $display("");
+            
+            // Enviar operación, operando A y operando B
+            // $display(">>> Enviando operacion y operandos:");
+            uart_send_byte({2'b00, op_code});
+            uart_send_byte(operand_a);
+            uart_send_byte(operand_b);
+            
+            // $display("\n<<< Recibiendo resultado y flags:");
+            // Esperar y recibir resultado
+            uart_receive_byte(received_result);
+            uart_receive_byte(received_flags);
+            
+            recv_carry = received_flags[1];
+            recv_zero = received_flags[0];
+            
+            // Verificar resultados
+            $display("\n------------------------------------------------");
+            $display("VERIFICACION DE RESULTADOS");
+            $display("---------------------------------------------------");
+            $display("Resultado:");
+            $display("Esperado: %4d (0x%02h, 0b%08b)", $signed(exp_result), exp_result, exp_result);
+            $display("Recibido: %4d (0x%02h, 0b%08b)", $signed(received_result), received_result, received_result);
+            $display("Match: %s", (received_result == exp_result) ? "OK" : "FAIL");
+            $display("----------------------------------------------------");
+            $display("Flags:");
+            $display("Carry - Esperado: %b | Recibido: %b | %s", exp_carry, recv_carry, 
+                     (exp_carry == recv_carry) ? "OK" : "FAIL");
+            $display("Zero  - Esperado: %b | Recibido: %b | %s", exp_zero, recv_zero,
+                     (exp_zero == recv_zero) ? "OK" : "FAIL");
+            $display("-----------------------------------------------------");
+            
+            if (received_result == exp_result && recv_carry == exp_carry && recv_zero == exp_zero) begin
+                $display("\nTEST %0d PASSED\n", test_count);
+                pass_count = pass_count + 1;
+            end else begin
+                $display("\nTEST %0d FAILED\n", test_count);
+                fail_count = fail_count + 1;
+            end
+            
+            #(BIT_PERIOD * 10); // Pausa entre tests
         end
-    end
+    endtask
     
-    // Secuencia de prueba
+    // Proceso principal de testing
     initial begin
-        $dumpfile("uart_system.vcd");
-        $dumpvars(0, uart_tx_tb);
+        $display("\n");
+        $display("----------------------------------------------------------");
+        $display("TESTBENCH SISTEMA ALU-UART");
+        $display("----------------------------------------------------------");
+        $display("\n");
         
         // Inicialización
+        tx_sim = 1;  // Línea idle
         reset = 1;
-        rx_line = 1;  // Línea idle
-        tx_byte_count = 0;
-        tx_start_last = 0;
-        tx_data_last = 0;
-        #100;
+        test_count = 0;
+        pass_count = 0;
+        fail_count = 0;
         
+        // Reset
+        #(CLK_PERIOD * 20);
         reset = 0;
-        #100;
+        #(CLK_PERIOD * 20);
         
-        $display("\n========================================");
-        $display("Sistema UART-ALU Bidireccional");
-        $display("========================================\n");
+        $display("\nIniciando pruebas...\n");
         
-        // ========== PRUEBA 1: ADD (5 + 3 = 8) ==========
-        $display("=== Prueba 1: ADD (5 + 3) ===");
-        fork
-            // Enviar operación
-            begin
-                send_uart_byte(8'h20);  // ADD (0x20)
-                send_uart_byte(8'h05);  // A = 5
-                send_uart_byte(8'h03);  // B = 3
-            end
-            
-            // Recibir resultado
-            begin
-                #(BIT_PERIOD * 35);  // Esperar a que se procese
-                receive_uart_byte(received_result);
-                receive_uart_byte(received_flags);
-                $display("  [RESULTADO] Valor: %d, Carry: %b, Zero: %b", 
-                         received_result, received_flags[0], received_flags[1]);
-                if (received_result == 8 && received_flags[0] == 0)
-                    $display("  ✓ PASS\n");
-                else
-                    $display("  ✗ FAIL (Esperado: 8, Carry=0)\n");
-            end
-        join
+        // ========== PRUEBAS DE OPERACIONES ==========
         
-        // Esperar entre pruebas
+        // Test 1: SUMA (sin overflow)
+        test_alu_operation(
+            6'b100000,  // op_suma
+            8'd15,      // A = 15
+            8'd10,      // B = 10
+            8'd25,      // Resultado = 25
+            1'b0,       // Carry = 0
+            1'b0,       // Zero = 0
+            "SUMA: 15 + 10 = 25"
+        );
+        
+        // Test 2: SUMA (con overflow positivo)
+        test_alu_operation(
+            6'b100000,  // op_suma
+            8'd127,     // A = 127 (máximo positivo)
+            8'd1,       // B = 1
+            -8'd128,    // Resultado = -128 (overflow)
+            1'b1,       // Carry = 1 (overflow)
+            1'b0,       // Zero = 0
+            "SUMA: 127 + 1 = -128 (overflow)"
+        );
+        
+        // Test 3: RESTA
+        test_alu_operation(
+            6'b100010,  // op_resta
+            8'd30,      // A = 30
+            8'd12,      // B = 12
+            8'd18,      // Resultado = 18
+            1'b0,       // Carry = 0
+            1'b0,       // Zero = 0
+            "RESTA: 30 - 12 = 18"
+        );
+        
+        // Test 4: RESTA (resultado cero)
+        test_alu_operation(
+            6'b100010,  // op_resta
+            8'd50,      // A = 50
+            8'd50,      // B = 50
+            8'd0,       // Resultado = 0
+            1'b0,       // Carry = 0
+            1'b1,       // Zero = 1
+            "RESTA: 50 - 50 = 0 (flag zero)"
+        );
+        
+        // Test 5: AND
+        test_alu_operation(
+            6'b100100,  // op_and
+            8'b11110000, // A = 0xF0
+            8'b10101010, // B = 0xAA
+            8'b10100000, // Resultado = 0xA0
+            1'b0,        // Carry = 0
+            1'b0,        // Zero = 0
+            "AND: 0xF0 & 0xAA = 0xA0"
+        );
+        
+        // Test 6: OR
+        test_alu_operation(
+            6'b100101,  // op_or
+            8'b11110000, // A = 0xF0
+            8'b00001111, // B = 0x0F
+            8'b11111111, // Resultado = 0xFF
+            1'b0,        // Carry = 0
+            1'b0,        // Zero = 0
+            "OR: 0xF0 | 0x0F = 0xFF"
+        );
+        
+        // Test 7: XOR
+        test_alu_operation(
+            6'b100110,  // op_xor
+            8'b11110000, // A = 0xF0
+            8'b11110000, // B = 0xF0
+            8'b00000000, // Resultado = 0x00
+            1'b0,        // Carry = 0
+            1'b1,        // Zero = 1
+            "XOR: 0xF0 ^ 0xF0 = 0x00 (flag zero)"
+        );
+        
+        // Test 8: SRA (shift right arithmetic)
+        test_alu_operation(
+            6'b000011,  // op_sra
+            -8'd8,      // A = -8 (0xF8)
+            8'd2,       // B = 2
+            -8'd2,      // Resultado = -2 (0xFE, mantiene signo)
+            1'b0,       // Carry = 0
+            1'b0,       // Zero = 0
+            "SRA: -8 >>> 2 = -2 (aritmetico)"
+        );
+        
+        // Test 9: SRL (shift right logical)
+        test_alu_operation(
+            6'b000010,  // op_srl
+            8'b11110000, // A = 0xF0
+            8'd4,       // B = 4
+            8'b00001111, // Resultado = 0x0F
+            1'b0,        // Carry = 0
+            1'b0,        // Zero = 0
+            "SRL: 0xF0 >> 4 = 0x0F (logico)"
+        );
+        
+        // Test 10: NOR
+        test_alu_operation(
+            6'b100111,  // op_nor
+            8'b11110000, // A = 0xF0
+            8'b00001111, // B = 0x0F
+            8'b00000000, // Resultado = 0x00
+            1'b0,        // Carry = 0
+            1'b1,        // Zero = 1
+            "NOR: ~(0xF0 | 0x0F) = 0x00"
+        );
+        
+        // ========== RESUMEN ==========
         #(BIT_PERIOD * 20);
         
-        // ========== PRUEBA 2: SUB (10 - 4 = 6) ==========
-        $display("=== Prueba 2: SUB (10 - 4) ===");
-        fork
-            begin
-                send_uart_byte(8'h22);  // SUB (0x22)
-                send_uart_byte(8'h0A);  // A = 10
-                send_uart_byte(8'h04);  // B = 4
-            end
-            
-            begin
-                #(BIT_PERIOD * 35);
-                receive_uart_byte(received_result);
-                receive_uart_byte(received_flags);
-                $display("  [RESULTADO] Valor: %d, Carry: %b, Zero: %b", 
-                         received_result, received_flags[0], received_flags[1]);
-                if (received_result == 6 && received_flags[0] == 0)
-                    $display("  ✓ PASS\n");
-                else
-                    $display("  ✗ FAIL (Esperado: 6, Carry=0)\n");
-            end
-        join
+        $display("\n");
+        $display("----------------------------------------------------------");
+        $display("RESUMEN DE PRUEBAS");
+        $display("----------------------------------------------------------");
+        $display("Tests ejecutados: %3d", test_count);
+        $display("Tests exitosos:   %3d", pass_count);
+        $display("Tests fallidos:   %3d", fail_count);
+        $display("-----------------------------------------------------------");
         
-        // Esperar entre pruebas
-        #(BIT_PERIOD * 20);
+        if (fail_count == 0) begin
+            $display("TODOS LOS TESTS PASARON");
+        end else begin
+            $display("ALGUNOS TESTS FALLARON");
+        end
         
-        // ========== PRUEBA 3: NOR (0xF0 | 0x0F = 0x00) ==========
-        $display("=== Prueba 3: NOR (0xF0 | 0x0F) - Verifica Zero flag ===");
-        fork
-            begin
-                send_uart_byte(8'h27);  // NOR (0x27)
-                send_uart_byte(8'hF0);  // A = 0xF0
-                send_uart_byte(8'h0F);  // B = 0x0F
-            end
-            
-            begin
-                #(BIT_PERIOD * 35);
-                receive_uart_byte(received_result);
-                receive_uart_byte(received_flags);
-                $display("  [RESULTADO] Valor: 0x%h, Carry: %b, Zero: %b", 
-                         received_result, received_flags[0], received_flags[1]);
-                if (received_result == 0 && received_flags[1] == 1)
-                    $display("  ✓ PASS (Zero flag activado)\n");
-                else
-                    $display("  ✗ FAIL (Esperado: 0x00, Zero=1)\n");
-            end
-        join
+        $display("----------------------------------------------------------");
+        $display("\n");
         
-        // Esperar entre pruebas
-        #(BIT_PERIOD * 20);
-        
-        // ========== PRUEBA 4: AND (0xAA & 0x55 = 0x00) ==========
-        $display("=== Prueba 4: AND (0xAA & 0x55) ===");
-        fork
-            begin
-                send_uart_byte(8'h24);  // AND (0x24)
-                send_uart_byte(8'hAA);  // A = 0xAA
-                send_uart_byte(8'h55);  // B = 0x55
-            end
-            
-            begin
-                #(BIT_PERIOD * 35);
-                receive_uart_byte(received_result);
-                receive_uart_byte(received_flags);
-                $display("  [RESULTADO] Valor: 0x%h, Carry: %b, Zero: %b", 
-                         received_result, received_flags[0], received_flags[1]);
-                if (received_result == 0 && received_flags[1] == 1)
-                    $display("  ✓ PASS (Resultado=0x00, Zero flag activado)\n");
-                else
-                    $display("  ✗ FAIL (Esperado: 0x00, Zero=1)\n");
-            end
-        join
-        
-        // Esperar entre pruebas
-        #(BIT_PERIOD * 20);
-        
-        // ========== PRUEBA 5: ADD con CARRY (127 + 1 = 128) ==========
-        $display("=== Prueba 5: ADD con CARRY (127 + 1) ===");
-        $display("  Nota: Suma de dos números positivos con resultado negativo");
-        fork
-            begin
-                send_uart_byte(8'h20);  // ADD (0x20)
-                send_uart_byte(8'h7F);  // A = 127 (0x7F, máximo positivo)
-                send_uart_byte(8'h01);  // B = 1
-            end
-            
-            begin
-                #(BIT_PERIOD * 35);
-                receive_uart_byte(received_result);
-                receive_uart_byte(received_flags);
-                $display("  [RESULTADO] Valor: 0x%h (%d), Carry: %b, Zero: %b", 
-                         received_result, $signed(received_result), received_flags[0], received_flags[1]);
-                if (received_result == 128 && received_flags[0] == 1)
-                    $display("  ✓ PASS (Overflow detectado, Carry=1)\n");
-                else
-                    $display("  ✗ FAIL (Esperado: 0x80, Carry=1)\n");
-            end
-        join
-        
-        // Esperar entre pruebas
-        #(BIT_PERIOD * 20);
-        
-        // ========== PRUEBA 6: ADD con CARRY (128 + 128 = 256→0) ==========
-        $display("=== Prueba 6: ADD con CARRY y ZERO (128 + 128) ===");
-        $display("  Nota: Suma de dos números negativos (signed)");
-        fork
-            begin
-                send_uart_byte(8'h20);  // ADD (0x20)
-                send_uart_byte(8'h80);  // A = 128 (0x80, mínimo en signed)
-                send_uart_byte(8'h80);  // B = 128 (0x80)
-            end
-            
-            begin
-                #(BIT_PERIOD * 35);
-                receive_uart_byte(received_result);
-                receive_uart_byte(received_flags);
-                $display("  [RESULTADO] Valor: 0x%h, Carry: %b, Zero: %b", 
-                         received_result, received_flags[0], received_flags[1]);
-                if (received_result == 0 && received_flags[0] == 1 && received_flags[1] == 1)
-                    $display("  ✓ PASS (Overflow, Carry=1 y Zero=1)\n");
-                else
-                    $display("  ✗ FAIL (Esperado: 0x00, Carry=1, Zero=1)\n");
-            end
-        join
-        
-        // Esperar entre pruebas
-        #(BIT_PERIOD * 20);
-        
-        // ========== PRUEBA 7: SUB sin CARRY (5 - 10 = -5) ==========
-        $display("=== Prueba 7: SUB sin CARRY (5 - 10) ===");
-        $display("  Nota: Resta donde A < B (resultado negativo, pero sin overflow)");
-        fork
-            begin
-                send_uart_byte(8'h22);  // SUB (0x22)
-                send_uart_byte(8'h05);  // A = 5
-                send_uart_byte(8'h0A);  // B = 10
-            end
-            
-            begin
-                #(BIT_PERIOD * 35);
-                receive_uart_byte(received_result);
-                receive_uart_byte(received_flags);
-                $display("  [RESULTADO] Valor: 0x%h (%d), Carry: %b, Zero: %b", 
-                         received_result, $signed(received_result), received_flags[0], received_flags[1]);
-                if (received_result == 251 && received_flags[0] == 0)  // 251 es -5 en complemento a 2, sin overflow
-                    $display("  ✓ PASS (Resultado negativo válido, Carry=0)\n");
-                else
-                    $display("  ✗ FAIL (Esperado: 0xFB (-5), Carry=0)\n");
-            end
-        join
-        
-        // Esperar entre pruebas
-        #(BIT_PERIOD * 20);
-        
-        // ========== PRUEBA 8: SUB sin CARRY (10 - 5 = 5) ==========
-        $display("=== Prueba 8: SUB sin CARRY (10 - 5) ===");
-        $display("  Nota: Resta normal sin overflow");
-        fork
-            begin
-                send_uart_byte(8'h22);  // SUB (0x22)
-                send_uart_byte(8'h0A);  // A = 10
-                send_uart_byte(8'h05);  // B = 5
-            end
-            
-            begin
-                #(BIT_PERIOD * 35);
-                receive_uart_byte(received_result);
-                receive_uart_byte(received_flags);
-                $display("  [RESULTADO] Valor: 0x%h (%d), Carry: %b, Zero: %b", 
-                         received_result, $signed(received_result), received_flags[0], received_flags[1]);
-                if (received_result == 5 && received_flags[0] == 0)
-                    $display("  ✓ PASS (Resta normal, Carry=0)\n");
-                else
-                    $display("  ✗ FAIL (Esperado: 0x05, Carry=0)\n");
-            end
-        join
-        
-        $display("\n========================================");
-        $display("Todas las pruebas completadas");
-        $display("========================================\n");
+        #(BIT_PERIOD * 50);
+        $finish;
     end
+    
+    // Timeout de seguridad
+    initial begin
+        #50000000; // 50ms timeout
+        $display("\n[ERROR] Timeout - La simulacion se detuvo automaticamente");
+        $finish;
+    end
+    
+    // Monitoreo opcional - Descomenta para debugging detallado
+    // Opción 1: Monitor de estados principales
+    // initial begin
+    //     $monitor("[%0t] FSM=%0d | RX_done=%b RX_data=0x%02h | TX_start=%b TX_done=%b | ALU_OP=0b%06b A=%0d B=%0d Result=%0d Result_reg:0x%0d tx_line=%b", 
+    //              $time, intf_alu_inst.state_reg, rx_done_tick, rx_data, 
+    //              tx_start, tx_done_tick, alu_op, alu_a, alu_b, alu_result, intf_alu_inst.result_reg, tx_line);
+    // end
+    
+    // Opción 2: Monitor solo de cambios importantes (comenta el anterior y descomenta este)
+    /*
+    always @(intf_alu_inst.state_reg) begin
+        $display("[%0t] ═══ Estado FSM cambió a: %0d", $time, intf_alu_inst.state_reg);
+    end
+    
+    always @(posedge rx_done_tick) begin
+        $display("[%0t] *** RX recibió byte: 0x%02h", $time, rx_data);
+    end
+    
+    always @(posedge tx_start) begin
+        $display("[%0t] >>> TX iniciando envío de: 0x%02h", $time, tx_data);
+    end
+    */
 
 endmodule
