@@ -106,7 +106,7 @@ module uart_rx #(
             STOP: begin
                 if (s_tick) begin
                     if (s_reg == (SB_TICK - 1)) begin
-                        // Paso 6: Fin del bit de Stop
+                        // Paso 6: En el medio del bit de Stop
                         // Verificar que el bit de Stop sea válido (rx=1)
                         if (rx) begin
                             // Stop bit válido, recepción exitosa

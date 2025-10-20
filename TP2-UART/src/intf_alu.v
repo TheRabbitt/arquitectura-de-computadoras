@@ -13,7 +13,6 @@ module intf_alu #(
     output reg [ALU_WIDTH-1:0] alu_a,      // Operando A
     output reg [ALU_WIDTH-1:0] alu_b,      // Operando B
     output reg [5:0] alu_op,               // Código de operación
-    output reg alu_start,                  // Señal para iniciar operación
     
     // Interfaz con ALU (entradas desde la ALU)
     input wire [ALU_WIDTH-1:0] alu_result, // Resultado de la ALU
@@ -83,7 +82,6 @@ module intf_alu #(
         alu_a = a_reg;
         alu_b = b_reg;
         alu_op = op_reg;
-        alu_start = 1'b0;
         tx_start = 1'b0;
         tx_data = 8'h00;
         

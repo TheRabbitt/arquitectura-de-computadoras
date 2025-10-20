@@ -18,7 +18,6 @@ module top (
     wire [7:0] rx_data;       // Dato recibido
     wire [7:0] alu_a, alu_b;  // Operandos de ALU
     wire [5:0] alu_op;        // Operación de ALU
-    wire alu_start;           // Señal de inicio ALU
     wire [7:0] alu_result;    // Resultado de ALU
     wire alu_carry, alu_zero; // Flags de ALU
     wire tx_start;            // Señal para iniciar TX
@@ -109,7 +108,6 @@ module top (
         .alu_a(alu_a),
         .alu_b(alu_b),
         .alu_op(alu_op),
-        .alu_start(alu_start),
         .alu_result(alu_result),
         .alu_carry(alu_carry),
         .alu_zero(alu_zero),
