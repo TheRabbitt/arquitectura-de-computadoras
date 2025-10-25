@@ -122,9 +122,9 @@ module top (
     // LEDs de Debug (opcional)
     // ============================================================
     // Mostrar último byte recibido en los LEDs
-    assign debug_leds = rx_data;
+    assign debug_leds = alu_result;
     
-    // LED de actividad RX (se enciende cuando recibe datos)
+    // // LED de actividad RX (se enciende cuando recibe datos)
     always @(posedge clk) begin
         if (reset)
             rx_activity_reg <= 1'b0;
@@ -134,7 +134,7 @@ module top (
             rx_activity_reg <= 1'b0;
     end
     
-    // LED de actividad TX (se enciende cuando transmite datos)
+    // // LED de actividad TX (se enciende cuando transmite datos)
     always @(posedge clk) begin
         if (reset)
             tx_activity_reg <= 1'b0;

@@ -36,7 +36,7 @@ set_property -dict { PACKAGE_PIN W18   IOSTANDARD LVCMOS33 } [get_ports {debug_l
 set_property -dict { PACKAGE_PIN U15   IOSTANDARD LVCMOS33 } [get_ports {debug_leds[5]}]
 set_property -dict { PACKAGE_PIN U14   IOSTANDARD LVCMOS33 } [get_ports {debug_leds[6]}]
 set_property -dict { PACKAGE_PIN V14   IOSTANDARD LVCMOS33 } [get_ports {debug_leds[7]}]
-## Flags de ALU
+# ## Flags de ALU
 set_property -dict { PACKAGE_PIN V13   IOSTANDARD LVCMOS33 } [get_ports {rx_activity_led}]
 set_property -dict { PACKAGE_PIN V3    IOSTANDARD LVCMOS33 } [get_ports {tx_activity_led}]
 

@@ -10,9 +10,9 @@ module intf_alu #(
     input wire [DBIT-1:0] rx_data,     // Dato recibido del RX
     
     // Interfaz con ALU (salidas hacia la ALU)
-    output reg [ALU_WIDTH-1:0] alu_a,      // Operando A
-    output reg [ALU_WIDTH-1:0] alu_b,      // Operando B
-    output reg [5:0] alu_op,               // Código de operación
+    output wire [ALU_WIDTH-1:0] alu_a,      // Operando A
+    output wire [ALU_WIDTH-1:0] alu_b,      // Operando B
+    output wire [5:0] alu_op,               // Código de operación
     
     // Interfaz con ALU (entradas desde la ALU)
     input wire [ALU_WIDTH-1:0] alu_result, // Resultado de la ALU
@@ -20,8 +20,8 @@ module intf_alu #(
     input wire alu_zero,                   // Flag de zero
     
     // Interfaz con UART TX
-    output reg tx_start,                   // Señal para iniciar transmisión
-    output reg [DBIT-1:0] tx_data,         // Dato a transmitir
+    output wire tx_start,                   // Señal para iniciar transmisión
+    output wire [DBIT-1:0] tx_data,         // Dato a transmitir
     input wire tx_done_tick                // Señal de transmisión completa
 );
 
@@ -44,6 +44,13 @@ module intf_alu #(
     reg [ALU_WIDTH-1:0] result_reg, result_next; // Resultado
     reg carry_reg, carry_next;              // Flag de carry capturado
     reg zero_reg, zero_next;                // Flag de zero capturado
+
+    // ========== REGISTROS INTERNOS PARA SALIDAS COMBINACIONALES ==========
+    reg [ALU_WIDTH-1:0] alu_a_comb;
+    reg [ALU_WIDTH-1:0] alu_b_comb;
+    reg [5:0] alu_op_comb;
+    reg tx_start_comb;
+    reg [DBIT-1:0] tx_data_comb;
     
     // Registro de estado (con reset asíncrono)
     always @(posedge clk) begin
@@ -78,12 +85,12 @@ module intf_alu #(
         carry_next = carry_reg;
         zero_next = zero_reg;
         
-        // Salidas por defecto
-        alu_a = a_reg;
-        alu_b = b_reg;
-        alu_op = op_reg;
-        tx_start = 1'b0;
-        tx_data = 8'h00;
+        // Salidas combinacionales por defecto
+        alu_a_comb = a_reg;
+        alu_b_comb = b_reg;
+        alu_op_comb = op_reg;
+        tx_start_comb = 1'b0;
+        tx_data_comb = 8'h00;
         
         case (state_reg)
             // ====== ESTADO IDLE ======
@@ -129,10 +136,10 @@ module intf_alu #(
             // ====== ESTADO SEND_RESULT ======
             SEND_RESULT: begin
                 // Preparar dato a enviar
-                tx_data = result_reg;
+                tx_data_comb = result_reg;
                 
                 // Pulso de inicio de transmisión solo si no hemos empezado
-                tx_start = 1'b1;
+                tx_start_comb = 1'b1;
                 
                 // Esperar a que TX termine
                 if (tx_done_tick) begin
@@ -144,8 +151,8 @@ module intf_alu #(
             SEND_FLAGS: begin
                 // Enviar segundo byte: flags empaquetados
                 // Formato: {6'b0, carry, zero}
-                tx_data = {6'b0, carry_reg, zero_reg};
-                tx_start = 1'b1;
+                tx_data_comb = {6'b0, carry_reg, zero_reg};
+                tx_start_comb = 1'b1;
                 
                 // Cuando termine, volver a IDLE
                 if (tx_done_tick) begin
@@ -156,5 +163,12 @@ module intf_alu #(
             default: state_next = IDLE;
         endcase
     end
+
+    // ========== ASIGNACIONES CONTINUAS A SALIDAS WIRE ==========
+    assign alu_a = alu_a_comb;
+    assign alu_b = alu_b_comb;
+    assign alu_op = alu_op_comb;
+    assign tx_start = tx_start_comb;
+    assign tx_data = tx_data_comb;
 
 endmodule

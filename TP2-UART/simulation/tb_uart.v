@@ -105,7 +105,6 @@ module tb_alu_uart_system;
         .alu_a(alu_a),
         .alu_b(alu_b),
         .alu_op(alu_op),
-        .alu_start(alu_start),
         .alu_result(alu_result),
         .alu_carry(alu_carry),
         .alu_zero(alu_zero),

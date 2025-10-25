@@ -174,10 +174,9 @@ def interactive_mode(ser):
             print("\n1. Enviar operación")
             print("2. Ver operaciones disponibles")
             print("3. Test automatizado")
-            print("4. Limpiar buffers")
-            print("5. Salir")
+            print("4. Salir")
             
-            choice = input("\nSelecciona opción (1-5): ").strip()
+            choice = input("\nSelecciona opción (1-4): ").strip()
             
             if choice == '1':
                 print("\nOperaciones disponibles:")
@@ -210,11 +209,6 @@ def interactive_mode(ser):
                 automated_test(ser)
             
             elif choice == '4':
-                ser.reset_input_buffer()
-                ser.reset_output_buffer()
-                print("✓ Buffers limpiados")
-            
-            elif choice == '5':
                 print("\nSaliendo...")
                 break
             
