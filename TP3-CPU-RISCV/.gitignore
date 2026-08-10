@@ -1,0 +1,41 @@
+# ---- Vivado ----
+# El proyecto se REGENERA con scripts/create_project.tcl.
+# Nunca commitear el .xpr ni las carpetas de runs.
+build/
+*.xpr
+*.jou
+*.log
+*.str
+*.rpt
+*.bit
+*.ltx
+*.dcp
+.Xil/
+*.cache/
+*.hw/
+*.ip_user_files/
+*.runs/
+*.sim/
+*.srcs/
+*.gen/
+vivado_pid*
+webtalk*
+usage_statistics*
+hs_err_pid*
+
+# ---- Simulacion local (Icarus / GTKWave) ----
+sim/*.vvp
+sim/*.vcd
+sim/*.fst
+
+# ---- Python ----
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# ---- Editor / SO ----
+.vscode/settings.json
+.DS_Store
+Thumbs.db
