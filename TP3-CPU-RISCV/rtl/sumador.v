@@ -1,20 +1,23 @@
+`timescale 1ns / 1ps
+`default_nettype none
+
+//------------------------------------------------------------------------------
+// sumador
+//   Sumador combinacional de NB_SUM bits, salida truncada a NB_SUM bits.
+//   Uso previsto: PC+4 (etapa IF) y PC+offset (target de branch/jal).
+//------------------------------------------------------------------------------
 module sumador
 #(
-    parameter NB_IN  = 32,
-    parameter NB_OUT = 32,
+    parameter NB_SUM = 32
 )(
+    input  wire [NB_SUM-1:0] i_a      ,
+    input  wire [NB_SUM-1:0] i_b      ,
 
-    input  wire signed         [NB_IN-1:0]   i_a        ,
-    input  wire signed         [NB_IN-1:0]   i_b        ,
-
-    output wire                [NB_OUT-1:0]  o_outresult, 
+    output wire [NB_SUM-1:0] o_result
 );
-    reg signed                 [NB_OUT-1:0]   result    ;
 
-always@(*)begin 
-    result     = i_a + i_b;
-end
-
-    assign o_outresult = result;
+    assign o_result = i_a + i_b;
 
 endmodule
+
+`default_nettype wire
