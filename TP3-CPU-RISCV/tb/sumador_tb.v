@@ -4,7 +4,7 @@
 //------------------------------------------------------------------------------
 // sumador_tb
 //   Testbench self-checking. Sin clock: el DUT es combinacional puro.
-//   Corre casos dirigidos (los que realmente importan) + un barrido aleatorio.
+//   Corre casos dirigidos + un barrido aleatorio.
 //------------------------------------------------------------------------------
 module sumador_tb;
 
@@ -97,6 +97,7 @@ module sumador_tb;
             $display(">>> TEST FAILED: %0d errores", errores);
         $display("--------------------------------------------------");
 
+        $fflush;
         $finish;
     end
 
