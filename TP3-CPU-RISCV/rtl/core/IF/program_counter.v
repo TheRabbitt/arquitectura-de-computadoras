@@ -1,21 +1,38 @@
 `timescale 1ns / 1ps
 `default_nettype none
 
-//------------------------------------------------------------------------------
-// registro_pc
+//==============================================================================
+// Módulo: registro_pc
+// Descripción: 
+//   Registro del Program Counter (PC) para procesador RISC-V. 
+//   Mantiene la dirección de la instrucción actual y controla el avance del flujo
+//   del programa. Incorpora lógica para manejar detenciones temporales (Stall)
+//   y un estado de parada definitiva (Halt) con memoria (sticky).
 //
-//   SOLO el registro del PC. No suma, no multiplexa: eso vive en etapa_if.
-//   Lo unico que se queda adentro es el estado que le pertenece al registro:
-//   el latch sticky de HALT.
+// Parámetros:
+//   - NB_PC    : Ancho de bits del Program Counter (Por defecto: 32 bits).
+//   - PC_RESET : Dirección de inicio tras un reset (Por defecto: 0).
 //
-//   PREMISA: el clock corre libre a 100 MHz siempre. Se controla i_en.
-//   Invariante: con i_en = 0 y i_rst = 0, ningun bit de estado cambia.
+// Entradas:
+//   - i_clk     : Reloj principal del sistema.
+//   - i_rst     : Reset sincrónico (activo en alto).
+//   - i_en      : Habilitación global del registro.
+//   - i_stall   : Señal de burbuja/espera. Congela el PC (ej. data/control hazards).
+//   - i_halt    : Señal de detención total (ej. instrucción EBREAK/HALT).
+//   - i_next_pc : Siguiente dirección a cargar (calculada por el datapath).
 //
-//   PRIORIDADES (mayor a menor):
-//     1. i_rst   -> sincrono, ignora i_en (se resetea con el pipeline pausado)
-//     2. i_halt  -> congela permanentemente (sticky)
-//     3. i_stall -> congela un ciclo (hazard load-use)
-//------------------------------------------------------------------------------
+// Salidas:
+//   - o_pc      : Dirección actual de la instrucción a buscar en memoria.
+//   - o_halted  : Bandera activa si el PC está en estado de parada definitiva.
+//
+// Notas de Comportamiento:
+//   - HALT Combinacional y Sticky: Para evitar que el PC avance un ciclo extra
+//     mientras se decodifica la instrucción de HALT, la señal de detención 
+//     impacta de forma combinacional inmediata, y al mismo tiempo se "enclava" 
+//     en el registro interno 'halted' para mantener el procesador congelado 
+//     aunque la señal 'i_halt' original desaparezca.
+//==============================================================================
+
 module registro_pc
 #(
     parameter              NB_PC    = 32             ,
