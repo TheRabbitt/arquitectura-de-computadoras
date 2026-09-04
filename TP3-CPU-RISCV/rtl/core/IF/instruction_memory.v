@@ -16,16 +16,25 @@ module InstructionMemory #(
 
     // Puerto A: Fetch del procesador (Lectura Sincrónica)
     input  wire [DATA_WIDTH-1:0]          i_pc,
+    input  wire                  i_read_enable,
     output reg  [DATA_WIDTH-1:0] o_instruction,
 
     // Puerto B: Debug Unit / UART (Escritura para Reprogramación)
     input  wire                  i_write_en,
+    input  wire                  i_debug_re,    // Habilitación de lectura
+    input  wire [ADDR_WIDTH-1:0] i_debug_addr,  // Dirección de lectura UART
     input  wire [ADDR_WIDTH-1:0] i_write_addr,
-    input  wire [DATA_WIDTH-1:0] i_write_data
+    input  wire [DATA_WIDTH-1:0] i_write_data,
+    output reg  [DATA_WIDTH-1:0] o_debug_rdata
 );
 
     // Arreglo de memoria
     reg [DATA_WIDTH-1:0] mem [0:(1<<ADDR_WIDTH)-1];
+
+    // INICIALIZACIÓN PARA SÍNTESIS/FPGA FÍSICA
+    initial begin
+        $readmemh("firmware.hex", mem);
+    end
 
     // Cálculo del índice de palabra: el PC avanza de a 4 bytes, 
     // por lo que ignoramos los 2 bits menos significativos.
@@ -33,13 +42,19 @@ module InstructionMemory #(
 
     // Puerto A: Lectura para Fetch
     always @(negedge i_clk) begin
-        o_instruction <= mem[word_addr];
+        if(i_read_enable) begin
+            o_instruction <= mem[word_addr];
+        end
     end
 
     // Puerto B: Escritura desde la UART / Debug Unit
     always @(posedge i_clk) begin
         if (i_write_en) begin
             mem[i_write_addr] <= i_write_data;
+        end
+
+        if (i_debug_re) begin
+            o_debug_rdata <= mem[i_debug_addr]; 
         end
     end
 
