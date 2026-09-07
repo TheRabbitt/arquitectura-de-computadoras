@@ -5,8 +5,8 @@ module top_if_stage (
     input  wire        clk_100MHz, // Reloj principal de la Nexys 4 (Pin E3)
     input  wire        btnC,       // Botón Central: Reset
     input  wire        btnU,       // Botón Arriba: Avanzar 1 ciclo de reloj (Step)
-    input  wire [15:0] sw,         // Interruptores para señales de control
-    output wire [15:0] led         // LEDs para visualizar PC o Instrucción
+    input  wire [15:0] i_sw,         // Interruptores para señales de control
+    output wire [15:0] o_led         // o_leds para visualizar PC o Instrucción
 );
 
     // Parámetros
@@ -37,15 +37,15 @@ module top_if_stage (
     );
 
     // -------------------------------------------------------------------------
-    // Mapeo de Interruptores (Switches)
+    // Mapeo de Interruptores (i_switches)
     // -------------------------------------------------------------------------
-    wire        w_en          = sw[0];
-    wire        w_stall       = sw[1];
-    wire        w_halt        = sw[2];
-    wire        w_branch_sel  = sw[3];
+    wire        w_en          = i_sw[0];
+    wire        w_stall       = i_sw[1];
+    wire        w_halt        = i_sw[2];
+    wire        w_branch_sel  = i_sw[3];
     
-    // El target del branch lo sacamos de los switches [11:4] y lo rellenamos
-    wire [31:0] w_branch_target = {24'd0, sw[11:4]};
+    // El target del branch lo sacamos de los i_switches [11:4] y lo rellenamos
+    wire [31:0] w_branch_target = {24'd0, i_sw[11:4]};
 
     // -------------------------------------------------------------------------
     // INSTANCIAS DE LA ETAPA IF
@@ -103,11 +103,11 @@ module top_if_stage (
     );
 
     // -------------------------------------------------------------------------
-    // Visualización en LEDs
+    // Visualización en o_leds
     // -------------------------------------------------------------------------
-    // sw[15] = 0 -> Muestra los 16 bits bajos del PC
-    // sw[15] = 1 -> Muestra los 16 bits bajos de la Instrucción Fetcheada
-    assign led = sw[15] ? w_instruction[15:0] : w_pc_actual[15:0];
+    // i_sw[15] = 0 -> Muestra los 16 bits bajos del PC
+    // i_sw[15] = 1 -> Muestra los 16 bits bajos de la Instrucción Fetcheada
+    assign o_led = i_sw[15] ? w_instruction[15:0] : w_pc_actual[15:0];
 
 endmodule
 `default_nettype wire

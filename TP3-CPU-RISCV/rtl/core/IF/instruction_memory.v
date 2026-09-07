@@ -31,9 +31,22 @@ module InstructionMemory #(
     // Arreglo de memoria
     reg [DATA_WIDTH-1:0] mem [0:(1<<ADDR_WIDTH)-1];
 
-    // INICIALIZACIÓN PARA SÍNTESIS/FPGA FÍSICA
+   // INICIALIZACIÓN DIRECTA PARA SÍNTESIS/FPGA FÍSICA
+    integer i;
     initial begin
-        $readmemh("firmware.hex", mem);
+        // 1. Llenar toda la memoria con ceros por seguridad
+        for (i = 0; i < (1<<ADDR_WIDTH); i = i + 1) begin
+            mem[i] = 32'd0;
+        end
+
+        // 2. Cargar tus instrucciones manualmente en cada índice
+        // (El índice corresponde a la palabra, no al byte, por eso va de 1 en 1)
+        mem[0] = 32'hAAAA0000; // Reemplazá con tu 1ra instrucción
+        mem[1] = 32'hBBBB1111; // Reemplazá con tu 2da instrucción
+        mem[2] = 32'hCCCC2222; // Reemplazá con tu 3ra instrucción
+        mem[3] = 32'hDDDD3333; // Reemplazá con tu 4ta instrucción
+        mem[8] = 32'hFFFF9999; // Reemplazá con tu 4ta instrucción
+        mem[9] = 32'hEEEE4444; // Reemplazá con tu 4ta instrucción
     end
 
     // Cálculo del índice de palabra: el PC avanza de a 4 bytes, 
