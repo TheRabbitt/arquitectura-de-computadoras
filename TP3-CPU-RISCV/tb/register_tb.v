@@ -3,7 +3,7 @@
 
 module tb_register_file();
 
-    // Declaración de señales
+    // Declaración de señales principales
     reg         clk;
     reg         rst;
     reg         reg_write;
@@ -15,6 +15,11 @@ module tb_register_file();
     wire [31:0] read_data1;
     wire [31:0] read_data2;
 
+    // Declaración de señales del puerto de depuración
+    reg         debug_re;
+    reg  [4:0]  debug_reg_addr;
+    wire [31:0] debug_reg_data;
+
     // Instanciación del Módulo
     register_file uut (
         .i_clk(clk),
@@ -25,7 +30,10 @@ module tb_register_file();
         .i_write_reg(write_reg),
         .i_write_data(write_data),
         .o_read_data1(read_data1),
-        .o_read_data2(read_data2)
+        .o_read_data2(read_data2),
+        .i_debug_re(debug_re),
+        .i_debug_reg_addr(debug_reg_addr),
+        .o_debug_reg_data(debug_reg_data)
     );
 
     // Generación del Reloj (Periodo de 10ns -> 100MHz)
@@ -41,6 +49,10 @@ module tb_register_file();
         read_reg2 = 0;
         write_reg = 0;
         write_data = 0;
+        
+        // Inicialización de debug
+        debug_re = 0;
+        debug_reg_addr = 0;
 
         $display("--- INICIO DE PRUEBAS DEL BANCO DE REGISTROS ---");
 
@@ -53,22 +65,19 @@ module tb_register_file();
         // ---------------------------------------------------------
         $display("[Test 1] Escribiendo 32'hAAAA_AAAA en x5 y 32'h5555_5555 en x10");
         
-        // Escribir en x5
         reg_write = 1; 
         write_reg = 5; 
         write_data = 32'hAAAA_AAAA;
-        #10; // Esperar un ciclo de reloj para que se guarde
+        #10;
 
-        // Escribir en x10
         write_reg = 10; 
         write_data = 32'h5555_5555;
         #10;
         
-        // Detener escritura y proceder a leer ambos registros a la vez
         reg_write = 0;
         read_reg1 = 5;
         read_reg2 = 10;
-        #5; // Pequeña demora para que la lógica combinacional se asiente
+        #5; 
         
         if (read_data1 == 32'hAAAA_AAAA && read_data2 == 32'h5555_5555)
             $display("-> EXITO: Lectura correcta de x5 y x10.");
@@ -78,7 +87,6 @@ module tb_register_file();
         // ---------------------------------------------------------
         // PRUEBA 2: Internal Forwarding (Write-Through)
         // ---------------------------------------------------------
-        // Vamos a escribir en el registro x15 y pedir leerlo en el MISMO ciclo
         $display("\n[Test 2] Probando Internal Forwarding en x15");
         #5;
         
@@ -86,15 +94,15 @@ module tb_register_file();
         write_reg = 15;
         write_data = 32'hDEAD_BEEF;
         
-        read_reg1 = 15; // Pedimos leer x15 mientras i_reg_write está en 1
+        read_reg1 = 15; 
         
-        #1; // Esperamos solo 1ns (mucho menos que un ciclo de reloj)
+        #1; 
         if (read_data1 == 32'hDEAD_BEEF)
             $display("-> EXITO: El dato fresco (DEAD_BEEF) fluye instantaneamente a la salida.");
         else
             $display("-> ERROR: Internal Forwarding fallido. read1=%h", read_data1);
             
-        #9; // Completar el ciclo de reloj
+        #9; 
 
         // ---------------------------------------------------------
         // PRUEBA 3: Protección del registro x0
@@ -105,16 +113,16 @@ module tb_register_file();
         write_reg = 0;
         write_data = 32'hFFFF_FFFF;
         
-        read_reg1 = 0; // Intentamos leer x0 al mismo tiempo (a ver si el forwarding lo pisa)
+        read_reg1 = 0; 
         
-        #1; // Esperar lógica combinacional
+        #1; 
         if (read_data1 == 32'h0000_0000)
             $display("-> EXITO: x0 mantiene el valor cero durante la escritura.");
         else
             $display("-> ERROR: x0 se dejo sobreescribir por forwarding. read1=%h", read_data1);
             
-        #9; // Completar ciclo
-        reg_write = 0; // Detener escritura
+        #9; 
+        reg_write = 0; 
         #5; 
         
         if (read_data1 == 32'h0000_0000)
@@ -130,23 +138,66 @@ module tb_register_file();
         write_reg = 20;
         write_data = 32'h1234_5678;
 
-        read_reg1 = 5;  // x5 debería seguir siendo AAAA_AAAA
-        read_reg2 = 10; // x10 debería seguir siendo 5555_555
+        read_reg1 = 5;  
+        read_reg2 = 10; 
 
-        #1; // Esperar lógica combinacional
+        #1; 
         if (read_data1 == 32'hAAAA_AAAA && read_data2 == 32'h5555_5555)
             $display("-> EXITO: Lectura correcta de x5 y x10 mientras se escribe x20.");
         else
             $display("-> ERROR: Datos incorrectos durante escritura de x20. read1=%h, read2=%h", read_data1, read_data2);
 
-        // Leer x20 en el siguiente ciclo para confirmar que se escribió correctamente
-        #9; // Completar ciclo
-        read_reg1 = 20; // Ahora leemos x20
-        #1; // Esperar lógica combinacional
+        #9; 
+        read_reg1 = 20; 
+        #1; 
         if (read_data1 == 32'h1234_5678)
             $display("-> EXITO: x20 fue escrito correctamente y se puede leer ahora.");
         else
             $display("-> ERROR: x20 no contiene el valor esperado. read1=%h", read_data1);
+            
+        #9;
+        reg_write = 0;
+
+        // -------------------------------------------------------------
+        // PRUEBA 5: Lectura a través de la Debug Unit (Sincrónica)
+        // -------------------------------------------------------------
+        $display("\n[Test 5] Verificando lecturas de la Debug Unit (UART)");
+        
+        debug_re = 1; // Habilitamos el puerto de lectura debug
+        
+        // Verificamos x0
+        debug_reg_addr = 0;
+        #10; // Esperamos 1 ciclo (posedge)
+        if (debug_reg_data == 32'h0000_0000)
+            $display("-> EXITO: Debug leyo x0 correctamente.");
+        else
+            $display("-> ERROR: Debug fallo en x0. Dato leido: %h", debug_reg_data);
+
+        // Verificamos x5 (Escrito en Prueba 1)
+        debug_reg_addr = 5;
+        #10;
+        if (debug_reg_data == 32'hAAAA_AAAA)
+            $display("-> EXITO: Debug leyo x5 correctamente (AAAA_AAAA).");
+        else
+            $display("-> ERROR: Debug fallo en x5. Dato leido: %h", debug_reg_data);
+
+        // Verificamos x15 (Escrito en Prueba 2)
+        debug_reg_addr = 15;
+        #10;
+        if (debug_reg_data == 32'hDEAD_BEEF)
+            $display("-> EXITO: Debug leyo x15 correctamente (DEAD_BEEF).");
+        else
+            $display("-> ERROR: Debug fallo en x15. Dato leido: %h", debug_reg_data);
+
+        // Verificamos x20 (Escrito en Prueba 4)
+        debug_reg_addr = 20;
+        #10;
+        if (debug_reg_data == 32'h1234_5678)
+            $display("-> EXITO: Debug leyo x20 correctamente (1234_5678).");
+        else
+            $display("-> ERROR: Debug fallo en x20. Dato leido: %h", debug_reg_data);
+
+        debug_re = 0;
 
         $display("\n--- FIN DE LAS PRUEBAS ---");
         #20;

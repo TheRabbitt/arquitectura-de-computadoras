@@ -7,27 +7,32 @@
 //   - 32 registros de 32 bits.
 //   - Registro x0 siempre lee 0.
 //   - Internal Forwarding (Write-Through): Permite leer el dato actualizado
-//     en el mismo ciclo en el que se escribe (simulando escritura en la 1ra
-//     mitad del ciclo y lectura en la 2da mitad).
+//     en el mismo ciclo en el que se escribe.
+//   - Puerto de Depuración: Permite a la UART leer el estado de los registros.
 //==============================================================================
 
 module register_file (
     input  wire        i_clk,
     input  wire        i_rst,
     
-    // Señales de Control
+    // Señales de Control (Datapath)
     input  wire        i_reg_write,
     
-    // Direcciones
+    // Direcciones (Datapath)
     input  wire [4:0]  i_read_reg1,
     input  wire [4:0]  i_read_reg2,
     input  wire [4:0]  i_write_reg,
     
-    // Datos
+    // Datos (Datapath)
     input  wire [31:0] i_write_data,
 
     output wire [31:0] o_read_data1,
-    output wire [31:0] o_read_data2
+    output wire [31:0] o_read_data2,
+
+    // Puerto de Depuración (Debug Unit / UART)
+    input  wire        i_debug_re,       // Habilitación de lectura debug
+    input  wire [4:0]  i_debug_reg_addr, // Dirección del registro a leer (0 a 31)
+    output reg  [31:0] o_debug_reg_data  // Dato enviado a la UART
 );
 
     reg [31:0] registers [0:31];
@@ -46,12 +51,20 @@ module register_file (
         end
     end
 
-    // Lectura Combinacional con Internal Forwarding (Write-Through)
-    // 1. Si el registro es 0, devuelve 0.
-    // 2. Si hay una escritura activa al mismo registro que se quiere leer, 
-    //    devuelve el i_write_data directamente (dato nuevo).
-    // 3. Si no, devuelve el valor almacenado en la memoria (dato viejo).
-    
+    // Lectura Sincrónica para Depuración (UART)
+    // Se hace sincrónica para no sumar retardo combinacional al pipeline principal.
+    always @(posedge i_clk) begin
+        if (i_debug_re) begin
+            // Mantenemos la regla de que x0 siempre vale 0, incluso en debug
+            if (i_debug_reg_addr == 5'd0) begin
+                o_debug_reg_data <= 32'd0;
+            end else begin
+                o_debug_reg_data <= registers[i_debug_reg_addr];
+            end
+        end
+    end
+
+    // Lectura Combinacional con Internal Forwarding (Write-Through) para Datapath
     assign o_read_data1 = (i_read_reg1 == 5'd0) ? 32'd0 :
                           (i_reg_write && (i_write_reg == i_read_reg1)) ? i_write_data :
                           registers[i_read_reg1];
