@@ -5,9 +5,9 @@
 
 ## Clock signal
 ##Bank = 35, Pin name = IO_L12P_T1_MRCC_35,					Sch name = CLK100MHZ
-#set_property PACKAGE_PIN E3 [get_ports clk]							
-	#set_property IOSTANDARD LVCMOS33 [get_ports clk]
-	#create_clock -add -name sys_clk_pin -period 10.00 -waveform {0 5} [get_ports clk]
+set_property PACKAGE_PIN E3 [get_ports clk_100MHz]							
+	set_property IOSTANDARD LVCMOS33 [get_ports clk_100MHz]
+	create_clock -add -name sys_clk_pin -period 10.00 -waveform {0 5} [get_ports clk_100MHz]
  
 ## Switches
 ##Bank = 34, Pin name = IO_L21P_T3_DQS_34,					Sch name = SW0
@@ -720,11 +720,6 @@ set_property PACKAGE_PIN F15 [get_ports btnU]
 #set_property PACKAGE_PIN U13 [get_ports {MemAdr[22]}]				
 	#set_property IOSTANDARD LVCMOS33 [get_ports {MemAdr[22]}]
 	
-
-## ---------------- Clock 100MHz (E3, sistema oscilador de la placa) ----------------
-set_property PACKAGE_PIN E3 [get_ports clk_100MHz];
-set_property IOSTANDARD LVCMOS33 [get_ports clk_100MHz];
-create_clock -add -name sys_clk_pin -period 10.00 -waveform {0 5} [get_ports clk_100MHz];
 
 ## ---------------- Configuracion del banco 0 (evita el warning CFGBVS-1) ----------------
 set_property CFGBVS VCCO [current_design]
