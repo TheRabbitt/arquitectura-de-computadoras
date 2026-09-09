@@ -1,12 +1,12 @@
 `timescale 1ns / 1ps
 `default_nettype none
 
-module top_if_id_test (
+module top_if_id (
     input  wire        clk_100MHz, // Reloj principal (Pin E3)
     input  wire        btnC,       // Botón Central: Reset
     input  wire        btnU,       // Botón Arriba: Avanzar 1 ciclo de reloj (Step)
-    input  wire [15:0] sw,         // Interruptores para señales de control
-    output wire [15:0] led         // LEDs para visualizar salidas de IF/ID
+    input  wire [15:0] i_sw,         // Interruptores para señales de control
+    output reg  [15:0] o_led         // o_leds para visualizar salidas de IF/ID
 );
 
     // Parámetros
@@ -24,23 +24,23 @@ module top_if_id_test (
     );
 
     // Mapeo de Interruptores (Control)
-    wire w_if_en       = sw[0];
-    wire w_stall       = sw[1];
-    wire w_halt        = sw[2];
-    wire w_branch_sel  = sw[3];
-    wire w_if_id_en    = sw[4];
-    wire w_flush       = sw[5];
+    wire w_if_en       = i_sw[0];
+    wire w_stall       = i_sw[1];
+    wire w_halt        = i_sw[2];
+    wire w_branch_sel  = i_sw[3];
+    wire w_if_id_en    = i_sw[4];
+    wire w_flush       = i_sw[5];
     
-    // Target del branch (sw[11:6])
-    wire [31:0] w_branch_target = {26'd0, sw[11:6]};
+    // Target del branch (i_sw[11:6])
+    wire [31:0] w_branch_target = {26'd0, i_sw[11:6]};
 
-    // Señales de interconexión (Marcadas para ILA Debug)
-    (* mark_debug = "true" *) wire [NB_PC-1:0]      w_pc_if;
-    (* mark_debug = "true" *) wire [DATA_WIDTH-1:0] w_instruction_if;
-    (* mark_debug = "true" *) wire                  w_halted;
+    // Señales de interconexión
+    wire [NB_PC-1:0]      w_pc_if;
+    wire [DATA_WIDTH-1:0] w_instruction_if;
+    wire                  w_halted;
 
-    (* mark_debug = "true" *) wire [NB_PC-1:0]      w_pc_id;
-    (* mark_debug = "true" *) wire [DATA_WIDTH-1:0] w_instruction_id;
+    wire [NB_PC-1:0]      w_pc_id;
+    wire [DATA_WIDTH-1:0] w_instruction_id;
 
     // Etapa IF (Fetch)
     stage_if #(
@@ -80,9 +80,18 @@ module top_if_id_test (
         .o_instruction (w_instruction_id)
     );
 
-    // Selector de visualización en LEDs (sw[15])
-    // sw[15] = 0 -> Muestra los 16 bits bajos del PC en la etapa ID
-    // sw[15] = 1 -> Muestra los 16 bits bajos de la instrucción en la etapa ID
-    assign led = sw[15] ? w_instruction_id[15:0] : w_pc_id[15:0];
+    // Selector de visualización en o_leds extendido para depuración
+    always @(*) begin
+        // Usamos i_sw[15:14] para elegir qué datos mandar a los o_leds 14 a 0
+        case(i_sw[15:14])
+            2'b00: o_led[14:0] = w_pc_if[14:0];          // Muestra PC en etapa IF
+            2'b01: o_led[14:0] = w_instruction_if[14:0]; // Muestra Instrucción en etapa IF
+            2'b10: o_led[14:0] = w_pc_id[14:0];          // Muestra PC en etapa ID
+            2'b11: o_led[14:0] = w_instruction_id[14:0]; // Muestra Instrucción en etapa ID
+        endcase
+        
+        // El o_led 15 se mantiene fijo indicando si la etapa IF está en Halt
+        o_led[15] = w_halted;
+    end
 
 endmodule
