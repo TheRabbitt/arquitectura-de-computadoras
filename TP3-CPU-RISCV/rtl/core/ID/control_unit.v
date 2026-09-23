@@ -25,6 +25,7 @@ module control_unit (
     localparam OPCODE_LOAD   = 7'b0000011; // Instrucciones de carga (lw)
     localparam OPCODE_STORE  = 7'b0100011; // Instrucciones de almacenamiento (sw)
     localparam OPCODE_BRANCH = 7'b1100011; // Instrucciones de salto condicional (beq, bne)
+    localparam OPCODE_I_TYPE = 7'b0010011; // Instrucciones aritmético-lógicas con inmediato (addi, slti, etc.)
 
     always @(*) begin
         // Valores por defecto (Previene la inferencia de latches y mantiene el procesador seguro)
@@ -87,6 +88,19 @@ module control_unit (
                 o_mem_write  = 1'b0;  // No se escribe memoria
                 o_branch     = 1'b1;  // Habilita la compuerta AND para el PC
                 o_alu_op     = 2'b01; // Don't care (la ALU no se usa para la condición de salto)
+            end
+
+            //------------------------------------------------------------------
+            // Tipo I Aritmético (Inmediato a Registro)
+            //------------------------------------------------------------------
+            OPCODE_I_TYPE: begin
+                o_alu_src    = 1'b1;  // Operando 2 viene del inmediato extendido
+                o_mem_to_reg = 1'b0;  // El dato a escribir viene de la ALU
+                o_reg_write  = 1'b1;  // Se escribe en el banco de registros
+                o_mem_read   = 1'b0;  // No se lee memoria
+                o_mem_write  = 1'b0;  // No se escribe memoria
+                o_branch     = 1'b0;  // No es un salto
+                o_alu_op     = 2'b10; // ALUOp 10: Delegar la operación al funct3 para saber si es ADDI, XORI, etc.
             end
 
             // Default cubierto por las asignaciones iniciales
