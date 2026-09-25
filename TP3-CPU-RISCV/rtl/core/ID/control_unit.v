@@ -10,7 +10,7 @@
 module control_unit (
     input  wire [6:0] i_opcode,     // Instruction [6:0]
     
-    // Señales de salida (7 puertos, 8 bits en total)
+    // Señales de salida (8 puertos, 9 bits en total)
     output reg        o_branch,     // Habilita el salto condicional
     output reg        o_mem_read,   // Habilita lectura en memoria de datos
     output reg        o_mem_to_reg, // Selecciona origen para el banco de registros
@@ -18,6 +18,7 @@ module control_unit (
     output reg        o_mem_write,  // Habilita escritura en memoria de datos
     output reg        o_alu_src,    // Selecciona operando de la ALU (Registro o Inmediato)
     output reg        o_reg_write   // Habilita escritura en el banco de registros
+    output reg        o_jump,       // Habilita el salto incondicional (JAL)
 );
 
     // Códigos de operación (Opcodes) estándar de RV32I
@@ -26,10 +27,12 @@ module control_unit (
     localparam OPCODE_STORE  = 7'b0100011; // Instrucciones de almacenamiento (sw)
     localparam OPCODE_BRANCH = 7'b1100011; // Instrucciones de salto condicional (beq, bne)
     localparam OPCODE_I_TYPE = 7'b0010011; // Instrucciones aritmético-lógicas con inmediato (addi, slti, etc.)
+    localparam OPCODE_JAL    = 7'b1101111; // Salto incondicional (Jump and Link)
 
     always @(*) begin
         // Valores por defecto (Previene la inferencia de latches y mantiene el procesador seguro)
         o_branch     = 1'b0;
+        o_jump       = 1'b0;
         o_mem_read   = 1'b0;
         o_mem_to_reg = 1'b0;
         o_alu_op     = 2'b00;
@@ -47,7 +50,8 @@ module control_unit (
                 o_reg_write  = 1'b1;  // Se escribe en el banco de registros
                 o_mem_read   = 1'b0;  // No se lee memoria
                 o_mem_write  = 1'b0;  // No se escribe memoria
-                o_branch     = 1'b0;  // No es un salto
+                o_branch     = 1'b0;  // No es un salto condicional
+                o_jump       = 1'b0;  // No es un salto incondicional
                 o_alu_op     = 2'b10; // ALUOp 10: Delegar la operación al funct3/funct7
             end
 
@@ -60,7 +64,8 @@ module control_unit (
                 o_reg_write  = 1'b1;  // Se escribe en el banco de registros
                 o_mem_read   = 1'b1;  // Se lee la memoria de datos
                 o_mem_write  = 1'b0;  // No se escribe memoria
-                o_branch     = 1'b0;  // No es un salto
+                o_branch     = 1'b0;  // No es un salto condicional
+                o_jump       = 1'b0;  // No es un salto incondicional
                 o_alu_op     = 2'b00; // ALUOp 00: Forzar a la ALU a sumar (Base + Offset)
             end
 
@@ -73,7 +78,8 @@ module control_unit (
                 o_reg_write  = 1'b0;  // NO se escribe en el banco de registros
                 o_mem_read   = 1'b0;  // No se lee memoria
                 o_mem_write  = 1'b1;  // Se escribe en la memoria de datos
-                o_branch     = 1'b0;  // No es un salto
+                o_branch     = 1'b0;  // No es un salto condicional
+                o_jump       = 1'b0;  // No es un salto incondicional
                 o_alu_op     = 2'b00; // ALUOp 00: Forzar a la ALU a sumar (Base + Offset)
             end
 
@@ -87,6 +93,7 @@ module control_unit (
                 o_mem_read   = 1'b0;  // No se lee memoria
                 o_mem_write  = 1'b0;  // No se escribe memoria
                 o_branch     = 1'b1;  // Habilita la compuerta AND para el PC
+                o_jump       = 1'b0;  // No es un salto incondicional
                 o_alu_op     = 2'b01; // Don't care (la ALU no se usa para la condición de salto)
             end
 
@@ -99,8 +106,23 @@ module control_unit (
                 o_reg_write  = 1'b1;  // Se escribe en el banco de registros
                 o_mem_read   = 1'b0;  // No se lee memoria
                 o_mem_write  = 1'b0;  // No se escribe memoria
-                o_branch     = 1'b0;  // No es un salto
+                o_branch     = 1'b0;  // No es un salto condicional
+                o_jump       = 1'b0;  // No es un salto incondicional
                 o_alu_op     = 2'b10; // ALUOp 10: Delegar la operación al funct3 para saber si es ADDI, XORI, etc.
+            end
+
+            //------------------------------------------------------------------
+            // JAL (Jump and Link - Salto Incondicional)
+            //------------------------------------------------------------------
+            OPCODE_JAL: begin
+                o_alu_src    = 1'b0;  // Don't care
+                o_mem_to_reg = 1'b0;  // Don't care
+                o_reg_write  = 1'b1;  // Habilita guardar la dirección de retorno (PC+4) en rd
+                o_mem_read   = 1'b0;  // No se lee memoria
+                o_mem_write  = 1'b0;  // No se escribe memoria
+                o_branch     = 1'b0;  // No es un salto condicional
+                o_jump       = 1'b1;  // Activa directamente la actualización del PC sin evaluar condición
+                o_alu_op     = 2'b00; // Don't care
             end
 
             // Default cubierto por las asignaciones iniciales
