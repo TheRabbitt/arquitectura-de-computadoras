@@ -17,8 +17,8 @@ module control_unit (
     output reg [1:0]  o_alu_op,     // Define la categoría de operación para ALU control (2 bits)
     output reg        o_mem_write,  // Habilita escritura en memoria de datos
     output reg        o_alu_src,    // Selecciona operando de la ALU (Registro o Inmediato)
-    output reg        o_reg_write   // Habilita escritura en el banco de registros
-    output reg        o_jump,       // Habilita el salto incondicional (JAL)
+    output reg        o_reg_write,   // Habilita escritura en el banco de registros
+    output reg        o_jump       // Habilita el salto incondicional (JAL)
 );
 
     // Códigos de operación (Opcodes) estándar de RV32I
