@@ -30,7 +30,7 @@ module id_ex_register #(
     
     // Grupo EX (Execution)
     input  wire                 i_ex_alu_src,
-    input  wire [1:0]           i_ex_alu_op,
+    input  wire [2:0]           i_ex_alu_op,
 
     // -------------------------------------------------------------------------
     // Entradas de Datapath (desde ID)
@@ -53,7 +53,7 @@ module id_ex_register #(
     output reg                  o_m_mem_read,
     output reg                  o_m_mem_write,
     output reg                  o_ex_alu_src,
-    output reg  [1:0]           o_ex_alu_op,
+    output reg  [2:0]           o_ex_alu_op,
 
     // -------------------------------------------------------------------------
     // Salidas de Datapath (hacia etapa EX)
@@ -71,7 +71,7 @@ module id_ex_register #(
     // -------------------------------------------------------------------------
     // Puerto de Depuración (Debug Unit / UART)
     // -------------------------------------------------------------------------
-    output wire [153:0]         o_debug_id_ex
+    output wire [154:0]         o_debug_id_ex
 );
 
     // -------------------------------------------------------------------------
@@ -123,12 +123,12 @@ module id_ex_register #(
     // Unifica los 154 bits del latch para que la Debug Unit los lea y envie byte a byte.
     // -------------------------------------------------------------------------
     assign o_debug_id_ex = {
-        o_wb_reg_write,  // [153]    (1 bit)
-        o_wb_mem_to_reg, // [152]    (1 bit)
-        o_m_mem_read,    // [151]    (1 bit)
-        o_m_mem_write,   // [150]    (1 bit)
-        o_ex_alu_src,    // [149]    (1 bit)
-        o_ex_alu_op,     // [148:147](2 bits)
+        o_wb_reg_write,  // [154]    (1 bit)
+        o_wb_mem_to_reg, // [153]    (1 bit)
+        o_m_mem_read,    // [152]    (1 bit)
+        o_m_mem_write,   // [151]    (1 bit)
+        o_ex_alu_src,    // [150]    (1 bit)
+        o_ex_alu_op,     // [149:147](3 bits)
         o_pc,            // [146:115](32 bits)
         o_rs1_data,      // [114:83] (32 bits)
         o_rs2_data,      // [82:51]  (32 bits)
