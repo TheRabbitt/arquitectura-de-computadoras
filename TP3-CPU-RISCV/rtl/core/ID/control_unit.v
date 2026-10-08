@@ -14,7 +14,7 @@ module control_unit (
     output reg        o_branch,     // Habilita el salto condicional
     output reg        o_mem_read,   // Habilita lectura en memoria de datos
     output reg        o_mem_to_reg, // Selecciona origen para el banco de registros
-    output reg [1:0]  o_alu_op,     // Define la categoría de operación para ALU control (2 bits)
+    output reg [2:0]  o_alu_op,     // Define la categoría de operación para ALU control (3 bits)
     output reg        o_mem_write,  // Habilita escritura en memoria de datos
     output reg        o_alu_src,    // Selecciona operando de la ALU (Registro o Inmediato)
     output reg        o_reg_write,   // Habilita escritura en el banco de registros
@@ -28,6 +28,7 @@ module control_unit (
     localparam OPCODE_BRANCH = 7'b1100011; // Instrucciones de salto condicional (beq, bne)
     localparam OPCODE_I_TYPE = 7'b0010011; // Instrucciones aritmético-lógicas con inmediato (addi, slti, etc.)
     localparam OPCODE_JAL    = 7'b1101111; // Salto incondicional (Jump and Link)
+    localparam OPCODE_LUI    = 7'b0110111; // Load Upper Immediate (Formato U)
 
     always @(*) begin
         // Valores por defecto (Previene la inferencia de latches y mantiene el procesador seguro)
@@ -35,7 +36,7 @@ module control_unit (
         o_jump       = 1'b0;
         o_mem_read   = 1'b0;
         o_mem_to_reg = 1'b0;
-        o_alu_op     = 2'b00;
+        o_alu_op     = 3'b000;
         o_mem_write  = 1'b0;
         o_alu_src    = 1'b0;
         o_reg_write  = 1'b0;
@@ -52,7 +53,7 @@ module control_unit (
                 o_mem_write  = 1'b0;  // No se escribe memoria
                 o_branch     = 1'b0;  // No es un salto condicional
                 o_jump       = 1'b0;  // No es un salto incondicional
-                o_alu_op     = 2'b10; // ALUOp 10: Delegar la operación al funct3/funct7
+                o_alu_op     = 3'b10; // ALUOp 10: Delegar la operación al funct3/funct7
             end
 
             //------------------------------------------------------------------
@@ -66,7 +67,7 @@ module control_unit (
                 o_mem_write  = 1'b0;  // No se escribe memoria
                 o_branch     = 1'b0;  // No es un salto condicional
                 o_jump       = 1'b0;  // No es un salto incondicional
-                o_alu_op     = 2'b00; // ALUOp 00: Forzar a la ALU a sumar (Base + Offset)
+                o_alu_op     = 3'b000; // ALUOp 000: Forzar a la ALU a sumar (Base + Offset)
             end
 
             //------------------------------------------------------------------
@@ -80,7 +81,7 @@ module control_unit (
                 o_mem_write  = 1'b1;  // Se escribe en la memoria de datos
                 o_branch     = 1'b0;  // No es un salto condicional
                 o_jump       = 1'b0;  // No es un salto incondicional
-                o_alu_op     = 2'b00; // ALUOp 00: Forzar a la ALU a sumar (Base + Offset)
+                o_alu_op     = 3'b000; // ALUOp 000: Forzar a la ALU a sumar (Base + Offset)
             end
 
             //------------------------------------------------------------------
@@ -94,21 +95,21 @@ module control_unit (
                 o_mem_write  = 1'b0;  // No se escribe memoria
                 o_branch     = 1'b1;  // Habilita la compuerta AND para el PC
                 o_jump       = 1'b0;  // No es un salto incondicional
-                o_alu_op     = 2'b01; // Don't care (la ALU no se usa para la condición de salto)
+                o_alu_op     = 3'b001; // Don't care (la ALU no se usa para la condición de salto)
             end
 
             //------------------------------------------------------------------
             // Tipo I Aritmético (Inmediato a Registro)
             //------------------------------------------------------------------
             OPCODE_I_TYPE: begin
-                o_alu_src    = 1'b1;  // Operando 2 viene del inmediato extendido
-                o_mem_to_reg = 1'b0;  // El dato a escribir viene de la ALU
-                o_reg_write  = 1'b1;  // Se escribe en el banco de registros
-                o_mem_read   = 1'b0;  // No se lee memoria
-                o_mem_write  = 1'b0;  // No se escribe memoria
-                o_branch     = 1'b0;  // No es un salto condicional
-                o_jump       = 1'b0;  // No es un salto incondicional
-                o_alu_op     = 2'b10; // ALUOp 10: Delegar la operación al funct3 para saber si es ADDI, XORI, etc.
+                o_alu_src    = 1'b1 ;  // Operando 2 viene del inmediato extendido
+                o_mem_to_reg = 1'b0 ;  // El dato a escribir viene de la ALU
+                o_reg_write  = 1'b1 ;  // Se escribe en el banco de registros
+                o_mem_read   = 1'b0 ;  // No se lee memoria
+                o_mem_write  = 1'b0 ;  // No se escribe memoria
+                o_branch     = 1'b0 ;  // No es un salto condicional
+                o_jump       = 1'b0 ;  // No es un salto incondicional
+                o_alu_op     = 3'b11; // ALUOp 011: Delegar la operación al funct3 para saber si es ADDI, XORI, etc.
             end
 
             //------------------------------------------------------------------
@@ -122,7 +123,21 @@ module control_unit (
                 o_mem_write  = 1'b0;  // No se escribe memoria
                 o_branch     = 1'b0;  // No es un salto condicional
                 o_jump       = 1'b1;  // Activa directamente la actualización del PC sin evaluar condición
-                o_alu_op     = 2'b00; // Don't care
+                o_alu_op     = 3'b000; // Don't care
+            end
+
+            //------------------------------------------------------------------
+            // Tipo U (LUI - Load Upper Immediate)
+            //------------------------------------------------------------------
+            OPCODE_LUI: begin
+                o_alu_src    = 1'b1;   // Operando 2 viene del inmediato (U-type)
+                o_mem_to_reg = 1'b0;   // El dato a escribir viene de la salida de la ALU
+                o_reg_write  = 1'b1;   // Se escribe en el banco de registros
+                o_mem_read   = 1'b0;   // No se lee memoria
+                o_mem_write  = 1'b0;   // No se escribe memoria
+                o_branch     = 1'b0;   // No es un salto condicional
+                o_jump       = 1'b0;   // No es un salto incondicional
+                o_alu_op     = 3'b100; // ALUOp 100: Instrucción LUI (ALU deja pasar el puerto B)
             end
 
             // Default cubierto por las asignaciones iniciales
