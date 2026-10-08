@@ -2,7 +2,7 @@
 `default_nettype none
 
 module alu_control (
-    input  wire [1:0] i_alu_op,     // Proviene de Control Unit
+    input  wire [2:0] i_alu_op,     // Proviene de Control Unit
     input  wire [2:0] i_funct3,     // Instruction [14:12]
     input  wire       i_funct7_5,   // Instruction [30]
     output reg  [3:0] o_alu_ctrl    // Control de 4 bits directo a la ALU
@@ -24,14 +24,14 @@ module alu_control (
     always @(*) begin
         case (i_alu_op)
             // Loads, Stores, JAL, JALR: Calculan dirección con suma
-            2'b00: o_alu_ctrl = ALU_ADD;
+            3'b000: o_alu_ctrl = ALU_ADD;
 
             // Branches (BEQ, BNE): Comparación con resta (no lo usamos en esta implementación
             // porque se resuelve el sato en ID). Se deja para respetar la teoría.
-            2'b01: o_alu_ctrl = ALU_SUB;
+            3'b001: o_alu_ctrl = ALU_SUB;
 
             // Tipo-R
-            2'b10: begin
+            3'b010: begin
                 case (i_funct3)
                     3'b000: o_alu_ctrl = (i_funct7_5) ? ALU_SUB : ALU_ADD; // ADD o SUB
                     3'b001: o_alu_ctrl = ALU_SLL;                          // SLL
@@ -45,7 +45,7 @@ module alu_control (
             end
 
             // Tipo-I Aritméticas (ADDI, ANDI, SRLI, SRAI, etc.)
-            2'b11: begin
+            3'b011: begin
                 case (i_funct3)
                     3'b000: o_alu_ctrl = ALU_ADD;                          // ADDI siempre suma
                     3'b001: o_alu_ctrl = ALU_SLL;                          // SLLI
@@ -57,6 +57,9 @@ module alu_control (
                     3'b111: o_alu_ctrl = ALU_AND;                          // ANDI
                 endcase
             end
+
+            // Tipo-U (LUI) - Pasa el inmediato directamente[cite: 22, 23]
+            3'b100: o_alu_ctrl = ALU_PASS_B;
 
             default: o_alu_ctrl = ALU_ADD;
         endcase

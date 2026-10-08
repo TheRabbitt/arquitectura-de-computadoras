@@ -47,7 +47,7 @@ module id_stage (
     output wire        o_m_mem_read,
     output wire        o_m_mem_write,
     output wire        o_ex_alu_src,
-    output wire [1:0]  o_ex_alu_op,
+    output wire [2:0]  o_ex_alu_op,
 
     // -------------------------------------------------------------------------
     // Salidas de Datapath para el Latch ID/EX
@@ -76,7 +76,7 @@ module id_stage (
     // Control salidas puras de Control Unit
     wire       ctrl_branch, ctrl_jump, ctrl_mem_read, ctrl_mem_to_reg;
     wire       ctrl_mem_write, ctrl_alu_src, ctrl_reg_write;
-    wire [1:0] ctrl_alu_op;
+    wire [2:0] ctrl_alu_op;
 
     // Control de MUX de Stall desde HDU
     wire       ctrl_mux_sel;
@@ -126,7 +126,7 @@ module id_stage (
     assign o_m_mem_read    = ctrl_mux_sel ? ctrl_mem_read   : 1'b0;
     assign o_m_mem_write   = ctrl_mux_sel ? ctrl_mem_write  : 1'b0;
     assign o_ex_alu_src    = ctrl_mux_sel ? ctrl_alu_src    : 1'b0;
-    assign o_ex_alu_op     = ctrl_mux_sel ? ctrl_alu_op     : 2'b00;
+    assign o_ex_alu_op     = ctrl_mux_sel ? ctrl_alu_op     : 3'b0;
 
     // -------------------------------------------------------------------------
     // Banco de Registros (Register File)
