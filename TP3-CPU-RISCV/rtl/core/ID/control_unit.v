@@ -18,7 +18,8 @@ module control_unit (
     output reg        o_mem_write,  // Habilita escritura en memoria de datos
     output reg        o_alu_src,    // Selecciona operando de la ALU (Registro o Inmediato)
     output reg        o_reg_write,   // Habilita escritura en el banco de registros
-    output reg        o_jump       // Habilita el salto incondicional (JAL)
+    output reg        o_jump,       // Habilita el salto incondicional (JAL)
+    output reg        o_jalr
 );
 
     // Códigos de operación (Opcodes) estándar de RV32I
@@ -29,6 +30,7 @@ module control_unit (
     localparam OPCODE_I_TYPE = 7'b0010011; // Instrucciones aritmético-lógicas con inmediato (addi, slti, etc.)
     localparam OPCODE_JAL    = 7'b1101111; // Salto incondicional (Jump and Link)
     localparam OPCODE_LUI    = 7'b0110111; // Load Upper Immediate (Formato U)
+    localparam OPCODE_JALR = 7'b1100111;   // Salto incondicional (Jump and Link Register)
 
     always @(*) begin
         // Valores por defecto (Previene la inferencia de latches y mantiene el procesador seguro)
@@ -40,6 +42,7 @@ module control_unit (
         o_mem_write  = 1'b0;
         o_alu_src    = 1'b0;
         o_reg_write  = 1'b0;
+        o_jalr       = 1'b0;
 
         case (i_opcode)
             //------------------------------------------------------------------
@@ -138,6 +141,21 @@ module control_unit (
                 o_branch     = 1'b0;   // No es un salto condicional
                 o_jump       = 1'b0;   // No es un salto incondicional
                 o_alu_op     = 3'b100; // ALUOp 100: Instrucción LUI (ALU deja pasar el puerto B)
+            end
+
+            //------------------------------------------------------------------
+            // JALR (Jump and Link Register - Salto Incondicional a Registro)
+            //------------------------------------------------------------------
+            OPCODE_JALR: begin
+                o_alu_src    = 1'b1;   // Don´t care
+                o_mem_to_reg = 1'b0;   // El dato a escribir viene de la salida de la ALU
+                o_reg_write  = 1'b1;   // Se escribe en el banco de registros
+                o_mem_read   = 1'b0;   // No se lee memoria
+                o_mem_write  = 1'b0;   // No se escribe memoria
+                o_branch     = 1'b0;   // No es un salto condicional
+                o_jump       = 1'b1;   // Salto incondicional, pero el PC se calcula como rs1 + offset
+                o_jalr       = 1'b1;   // Activa la actualización del PC con el valor calculado por ALU (rs1 + offset)
+                o_alu_op     = 3'b000; // Don't care
             end
 
             // Default cubierto por las asignaciones iniciales
