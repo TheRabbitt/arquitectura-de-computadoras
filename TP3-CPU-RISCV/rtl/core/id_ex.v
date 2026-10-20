@@ -36,6 +36,7 @@ module id_ex_register #(
     // Entradas de Datapath (desde ID)
     // -------------------------------------------------------------------------
     input  wire [NB_DATA-1:0]   i_pc,
+    input  wire [NB_DATA-1:0]   i_pc_plus_4,
     input  wire [NB_DATA-1:0]   i_rs1_data,
     input  wire [NB_DATA-1:0]   i_rs2_data,
     input  wire [NB_DATA-1:0]   i_imm,
@@ -59,6 +60,7 @@ module id_ex_register #(
     // Salidas de Datapath (hacia etapa EX)
     // -------------------------------------------------------------------------
     output reg  [NB_DATA-1:0]   o_pc,
+    output reg  [NB_DATA-1:0]   o_pc_plus_4,
     output reg  [NB_DATA-1:0]   o_rs1_data,
     output reg  [NB_DATA-1:0]   o_rs2_data,
     output reg  [NB_DATA-1:0]   o_imm,
