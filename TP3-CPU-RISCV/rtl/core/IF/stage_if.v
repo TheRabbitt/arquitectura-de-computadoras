@@ -26,6 +26,7 @@ module stage_if #(
     // Salidas hacia el registro IF/ID
     output wire [NB_PC-1:0]      o_pc,
     output wire [DATA_WIDTH-1:0] o_instruction,
+    output wire [NB_PC-1:0]      o_pc_plus_4,
     
     // Salidas de Estado / Debug
     output wire                  o_halted,
@@ -83,6 +84,7 @@ module stage_if #(
 
     // Asignación de salida directa hacia el registro IF/ID
     assign o_pc = w_pc_actual;
+    assign o_pc_plus_4 = w_pc_plus_4;
 
 endmodule
 `default_nettype wire

@@ -28,6 +28,7 @@ module mem_wb_latch (
     input  wire [31:0] i_read_data,    // Dato leído desde la Memoria de Datos
     input  wire [31:0] i_alu_result,   // Resultado proveniente de la ALU
     input  wire [4:0]  i_rd,           // Registro de destino
+    input  wire [31:0] i_pc_plus_4,    // Dirección de retorno para JAL/JALR
 
     // -------------------------------------------------------------------------
     // Salidas hacia la etapa WB

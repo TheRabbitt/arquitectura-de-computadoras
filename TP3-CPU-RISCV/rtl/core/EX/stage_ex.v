@@ -19,6 +19,7 @@ module stage_ex (
     input  wire [31:0] i_read_data1,  // Dato leído del registro RS1
     input  wire [31:0] i_read_data2,  // Dato leído del registro RS2
     input  wire [31:0] i_imm,         // Valor inmediato extendido
+    input  wire [31:0] i_pc_plus_4,   // Dirección de retorno para JAL/JALR
 
     // -------------------------------------------------------------------------
     // Entradas para Forwarding (Adelantamiento de datos)
@@ -37,7 +38,8 @@ module stage_ex (
     // Salidas hacia la etapa MEM (a través del registro EX/MEM)
     // -------------------------------------------------------------------------
     output wire [31:0] o_alu_result,  // Resultado calculado por la ALU
-    output wire [31:0] o_rs2_data     // Dato de RS2 (ya adelantado) para instrucciones Store
+    output wire [31:0] o_rs2_data,    // Dato de RS2 (ya adelantado) para instrucciones Store
+    output wire [31:0] o_pc_plus_4    // Dirección de retorno para JAL/JALR
 );
 
     // -------------------------------------------------------------------------

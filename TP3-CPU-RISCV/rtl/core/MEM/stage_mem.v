@@ -29,6 +29,7 @@ module stage_mem #(
     input  wire [DATA_WIDTH-1:0] i_alu_result, // Dirección de memoria / Dato calculado por la ALU
     input  wire [DATA_WIDTH-1:0] i_rs2_data,   // Dato a escribir en memoria (Store)
     input  wire [4:0]            i_rd,         // Registro destino
+    input  wire [DATA_WIDTH-1:0] i_pc_plus_4,   // Dirección de retorno para JAL/JALR
     
     // -------------------------------------------------------------------------
     // Interfaz de Debug / UART (hacia Memoria de Datos)
@@ -50,7 +51,8 @@ module stage_mem #(
     // Datapath
     output wire [DATA_WIDTH-1:0] o_read_data,  // Dato leído de la memoria
     output wire [DATA_WIDTH-1:0] o_alu_result, // Pasaje directo del resultado ALU
-    output wire [4:0]            o_rd          // Pasaje directo del registro destino
+    output wire [4:0]            o_rd,         // Pasaje directo del registro destino
+    output wire [DATA_WIDTH-1:0] o_pc_plus_4   // Pasaje directo de la dirección de retorno
 );
 
     // -------------------------------------------------------------------------

@@ -27,6 +27,7 @@ module ex_mem_latch #(
     input  wire [31:0] i_alu_result,
     input  wire [31:0] i_rs2_data,
     input  wire [4:0]  i_rd,
+    input  wire [31:0] i_pc_plus_4,
 
     // --------------------------------------------------------
     // Salidas hacia la etapa MEM (Memory)
@@ -39,7 +40,8 @@ module ex_mem_latch #(
 
     output reg  [31:0] o_alu_result,
     output reg  [31:0] o_rs2_data,
-    output reg  [4:0]  o_rd
+    output reg  [4:0]  o_rd,
+    output wire [31:0] o_pc_plus_4
 
     // --------------------------------------------------------
     // Salida para la Unidad de UART / Debug
