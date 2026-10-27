@@ -45,6 +45,7 @@ module id_ex_register #(
     input  wire [NB_REG-1:0]    i_rd,         // Registro destino para etapas WB / Forwarding
     input  wire [2:0]           i_funct3,     // Selecciona operación específica en ALU Control
     input  wire                 i_funct7_5,   // Bit 30 de la instrucción (distingue ADD/SUB, SRL/SRA)
+    input  wire                 i_wb_jump,    // Señal de control para indicar salto incondicional en WB
 
     // -------------------------------------------------------------------------
     // Salidas de Control (hacia etapa EX y latches posteriores)
@@ -69,11 +70,11 @@ module id_ex_register #(
     output reg  [NB_REG-1:0]    o_rd,
     output reg  [2:0]           o_funct3,
     output reg                  o_funct7_5,
-
+    output reg                  o_wb_jump
     // -------------------------------------------------------------------------
     // Puerto de Depuración (Debug Unit / UART)
     // -------------------------------------------------------------------------
-    output wire [154:0]         o_debug_id_ex
+    // output wire [155:0]         o_debug_id_ex
 );
 
     // -------------------------------------------------------------------------
@@ -90,6 +91,7 @@ module id_ex_register #(
             o_ex_alu_op     <= 2'b00;
             
             o_pc            <= {NB_DATA{1'b0}};
+            o_pc_plus_4     <= {NB_DATA{1'b0}};
             o_rs1_data      <= {NB_DATA{1'b0}};
             o_rs2_data      <= {NB_DATA{1'b0}};
             o_imm           <= {NB_DATA{1'b0}};
@@ -98,6 +100,7 @@ module id_ex_register #(
             o_rd            <= {NB_REG{1'b0}};
             o_funct3        <= 3'b000;
             o_funct7_5      <= 1'b0;
+            o_wb_jump       <= 1'b0;
         end
         else if (i_en) begin
             // Operación Normal: Se propagan las señales de ID hacia EX
@@ -109,6 +112,7 @@ module id_ex_register #(
             o_ex_alu_op     <= i_ex_alu_op;
                 
             o_pc            <= i_pc;
+            o_pc_plus_4     <= i_pc_plus_4;
             o_rs1_data      <= i_rs1_data;
             o_rs2_data      <= i_rs2_data;
             o_imm           <= i_imm;
@@ -117,6 +121,7 @@ module id_ex_register #(
             o_rd            <= i_rd;
             o_funct3        <= i_funct3;
             o_funct7_5      <= i_funct7_5;
+            o_wb_jump       <= i_wb_jump;
         end
     end
 
@@ -124,23 +129,24 @@ module id_ex_register #(
     // Empaquetado de Datos para transmisión UART / Debug Unit
     // Unifica los 154 bits del latch para que la Debug Unit los lea y envie byte a byte.
     // -------------------------------------------------------------------------
-    assign o_debug_id_ex = {
-        o_wb_reg_write,  // [154]    (1 bit)
-        o_wb_mem_to_reg, // [153]    (1 bit)
-        o_m_mem_read,    // [152]    (1 bit)
-        o_m_mem_write,   // [151]    (1 bit)
-        o_ex_alu_src,    // [150]    (1 bit)
-        o_ex_alu_op,     // [149:147](3 bits)
-        o_pc,            // [146:115](32 bits)
-        o_rs1_data,      // [114:83] (32 bits)
-        o_rs2_data,      // [82:51]  (32 bits)
-        o_imm,           // [50:19]  (32 bits)
-        o_rs1,           // [18:14]  (5 bits)
-        o_rs2,           // [13:9]   (5 bits)
-        o_rd,            // [8:4]    (5 bits)
-        o_funct3,        // [3:1]    (3 bits)
-        o_funct7_5       // [0]      (1 bit)
-    };
+    // assign o_debug_id_ex = {
+    //     o_wb_reg_write,  // [155]    (1 bit)
+    //     o_wb_mem_to_reg, // [154]    (1 bit)
+    //     o_m_mem_read,    // [153]    (1 bit)
+    //     o_m_mem_write,   // [152]    (1 bit)
+    //     o_ex_alu_src,    // [151]    (1 bit)
+    //     o_ex_alu_op,     // [150:148](3 bits)
+    //     o_pc,            // [147:116](32 bits)
+    //     o_rs1_data,      // [115:84] (32 bits)
+    //     o_rs2_data,      // [83:52]  (32 bits)
+    //     o_imm,           // [51:20]  (32 bits)
+    //     o_rs1,           // [19:15]  (5 bits)
+    //     o_rs2,           // [14:10]   (5 bits)
+    //     o_rd,            // [9:5]    (5 bits)
+    //     o_funct3,        // [4:2]    (3 bits)
+    //     o_funct7_5,      // [1]      (1 bit)
+    //     o_wb_jump        // [0]    (1 bit)
+    // };
 
 endmodule
 `default_nettype wire

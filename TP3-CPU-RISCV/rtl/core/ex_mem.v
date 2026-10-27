@@ -18,6 +18,7 @@ module ex_mem_latch #(
     // Señales de Control (WB)
     input  wire        i_wb_regwrite,
     input  wire        i_wb_memtoreg,
+    input  wire        i_wb_jump,
 
     // Señales de Control (M)
     input  wire        i_m_memread,
@@ -34,14 +35,14 @@ module ex_mem_latch #(
     // --------------------------------------------------------
     output reg         o_wb_regwrite,
     output reg         o_wb_memtoreg,
-
+    output reg         o_wb_jump,
     output reg         o_m_memread,
     output reg         o_m_memwrite,
 
     output reg  [31:0] o_alu_result,
     output reg  [31:0] o_rs2_data,
     output reg  [4:0]  o_rd,
-    output wire [31:0] o_pc_plus_4
+    output reg [31:0]  o_pc_plus_4
 
     // --------------------------------------------------------
     // Salida para la Unidad de UART / Debug
@@ -55,6 +56,7 @@ module ex_mem_latch #(
             // Reset sincrónico: Limpia todas las señales
             o_wb_regwrite <= 1'b0;
             o_wb_memtoreg <= 1'b0;
+            o_wb_jump     <= 1'b0;
 
             o_m_memread   <= 1'b0;
             o_m_memwrite  <= 1'b0;
@@ -62,11 +64,13 @@ module ex_mem_latch #(
             o_alu_result  <= 32'b0;
             o_rs2_data    <= 32'b0;
             o_rd          <= 5'b0;
+            o_pc_plus_4   <= 32'b0;
         end 
         else if (i_enable) begin
             // Solo actualiza si el pipeline está habilitado
             o_wb_regwrite <= i_wb_regwrite;
             o_wb_memtoreg <= i_wb_memtoreg;
+            o_wb_jump     <= i_wb_jump;
 
             o_m_memread   <= i_m_memread;
             o_m_memwrite  <= i_m_memwrite;
@@ -74,6 +78,7 @@ module ex_mem_latch #(
             o_alu_result  <= i_alu_result;
             o_rs2_data    <= i_rs2_data;
             o_rd          <= i_rd;
+            o_pc_plus_4   <= i_pc_plus_4;
         end
         // Si i_enable es 0, los registros mantienen su valor actual (Hold)
     end
@@ -91,6 +96,7 @@ module ex_mem_latch #(
     //     o_rs2_data,    // [36:5]
     //     o_rd           // [4:0]
     // };
+    // Agregar wb_jump y pc_plus_4 al vector de debug
 
 endmodule
 `default_nettype wire

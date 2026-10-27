@@ -20,6 +20,7 @@ module stage_mem #(
     // Control WB (Write-Back)
     input  wire                  i_wb_reg_write,
     input  wire                  i_wb_mem_to_reg,
+    input  wire                  i_wb_jump,
     
     // Control MEM (Memoria)
     input  wire                  i_m_mem_read,
@@ -47,6 +48,7 @@ module stage_mem #(
     // Control WB (Passthrough)
     output wire                  o_wb_reg_write,
     output wire                  o_wb_mem_to_reg,
+    output wire                  o_wb_jump,
     
     // Datapath
     output wire [DATA_WIDTH-1:0] o_read_data,  // Dato leído de la memoria
@@ -64,6 +66,8 @@ module stage_mem #(
     assign o_wb_mem_to_reg = i_wb_mem_to_reg;
     assign o_alu_result    = i_alu_result;
     assign o_rd            = i_rd;
+    assign o_pc_plus_4     = i_pc_plus_4;
+    assign o_wb_jump       = i_wb_jump;
 
     // -------------------------------------------------------------------------
     // Instanciación de la Memoria de Datos (Data Memory)

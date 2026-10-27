@@ -33,8 +33,7 @@
 //     aunque la señal 'i_halt' original desaparezca.
 //==============================================================================
 
-module registro_pc
-#(
+module registro_pc #(
     parameter              NB_PC    = 32             ,
     parameter [NB_PC-1:0]  PC_RESET = {NB_PC{1'b0}}
 )(

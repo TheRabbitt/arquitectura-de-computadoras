@@ -8,6 +8,7 @@ module stage_ex (
     // Señales de Control
     input  wire [2:0]  i_alu_op,      // Código de operación para la ALU
     input  wire        i_alusrc,      // Selecciona entre RS2 y el inmediato
+    input  wire        i_wb_jump,     // Indica si la instrucción es JAL o JALR
 
     // Campos de la instrucción
     input  wire [2:0]  i_funct3,      // bits [14:12] de la instrucción
@@ -33,27 +34,31 @@ module stage_ex (
     input  wire [4:0]  i_mem_wb_rd,
     input  wire        i_mem_wb_regwrite,
     input  wire [31:0] i_mem_wb_data,       // Dato que se va a escribir en registros
+    input  wire [31:0] i_mem_wb_pc_plus_4,  // Dirección de retorno para JAL/JALR
 
     // -------------------------------------------------------------------------
     // Salidas hacia la etapa MEM (a través del registro EX/MEM)
     // -------------------------------------------------------------------------
     output wire [31:0] o_alu_result,  // Resultado calculado por la ALU
     output wire [31:0] o_rs2_data,    // Dato de RS2 (ya adelantado) para instrucciones Store
-    output wire [31:0] o_pc_plus_4    // Dirección de retorno para JAL/JALR
+    output wire [31:0] o_pc_plus_4,   // Dirección de retorno para JAL/JALR
+    output wire        o_wb_jump      // Indica si la instrucción es JAL o JALR
 );
 
     // -------------------------------------------------------------------------
     // Cables de interconexión interna
     // -------------------------------------------------------------------------
-    wire [1:0]  w_forward_a;
-    wire [1:0]  w_forward_b;
-    wire [3:0]  w_alu_ctrl;
+    wire [1:0]  w_forward_a ;
+    wire [1:0]  w_forward_b ;
+    wire [3:0]  w_alu_ctrl  ;
     wire [31:0] w_mux3_a_out;
     wire [31:0] w_mux3_b_out;
     wire [31:0] w_mux2_b_out;
 
     // El dato a guardar en memoria (Store) es el resultado de RS2 con adelantamiento
-    assign o_rs2_data = w_mux3_b_out;
+    assign o_rs2_data  = w_mux3_b_out;
+    assign o_pc_plus_4 = i_pc_plus_4 ;
+    assign o_wb_jump   = i_wb_jump   ;
 
     // -------------------------------------------------------------------------
     // Instanciación de la Forwarding Unit

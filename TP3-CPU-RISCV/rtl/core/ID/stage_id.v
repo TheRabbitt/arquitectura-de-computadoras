@@ -15,6 +15,7 @@ module id_stage (
     // -------------------------------------------------------------------------
     input  wire [31:0] i_pc,
     input  wire [31:0] i_instruction,
+    input  wire [31:0] i_pc_plus_4,
 
     // -------------------------------------------------------------------------
     // Entradas de Retroalimentación desde la Etapa WB (Write-Back)
@@ -54,11 +55,13 @@ module id_stage (
     output wire        o_m_mem_write,
     output wire        o_ex_alu_src,
     output wire [2:0]  o_ex_alu_op,
+    output wire        o_wb_jump,
 
     // -------------------------------------------------------------------------
     // Salidas de Datapath para el Latch ID/EX
     // -------------------------------------------------------------------------
     output wire [31:0] o_pc,
+    output wire [31:0] o_pc_plus_4,
     output wire [31:0] o_rs1_data,
     output wire [31:0] o_rs2_data,
     output wire [31:0] o_imm,
@@ -234,12 +237,14 @@ module id_stage (
     // -------------------------------------------------------------------------
     // Asignación de campos del Datapath hacia el Latch ID/EX
     // -------------------------------------------------------------------------
-    assign o_pc       = i_pc;
-    assign o_rs1      = rs1_addr;
-    assign o_rs2      = rs2_addr;
-    assign o_rd       = rd_addr;
-    assign o_funct3   = i_instruction[14:12];
-    assign o_funct7_5 = i_instruction[30];
+    assign o_pc        = i_pc                ;
+    assign o_pc_plus_4 = i_pc_plus_4         ;
+    assign o_rs1       = rs1_addr            ;
+    assign o_rs2       = rs2_addr            ;
+    assign o_rd        = rd_addr             ;
+    assign o_funct3    = i_instruction[14:12];
+    assign o_funct7_5  = i_instruction[30]   ;
+    assign o_wb_jump   = ctrl_jump | ctrl_jalr;
 
 endmodule
 `default_nettype wire

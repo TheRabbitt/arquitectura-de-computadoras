@@ -19,8 +19,7 @@ module stage_wb (
     input  wire [31:0] i_pc_plus_4,  // Dirección de retorno para JAL/JALR propagada por el pipeline
 
     // Salidas
-    output wire [31:0] o_write_data, // Dato que se escribirá en el Register File
-    output wire [31:0] o_forward_ex  // Dato que se adelanta a la Forwarding Unit en EX
+    output wire [31:0] o_write_data // Dato que se escribirá en el Register File
 );
 
     // Cable interno para la salida del primer multiplexor
@@ -49,13 +48,6 @@ module stage_wb (
         .i_d1  (i_pc_plus_4),
         .o_out (o_write_data)
     );
-
-    // -------------------------------------------------------------------------
-    // Ruteo de señal de Forwarding
-    // Tal como se definió previamente, el forwarding hacia la ALU en EX
-    // sale estrictamente del primer multiplexor, ignorando lógicas de salto.
-    // -------------------------------------------------------------------------
-    assign o_forward_ex = w_mem_to_reg_out;
 
 endmodule
 `default_nettype wire
