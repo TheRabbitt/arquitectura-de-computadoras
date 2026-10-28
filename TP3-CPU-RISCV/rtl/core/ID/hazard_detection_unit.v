@@ -1,7 +1,11 @@
+`timescale 1ns / 1ps
+`default_nettype none
+
 module hazard_detection_unit (
     // Entradas desde la etapa de ejecución (ID/EX)
     input wire id_ex_mem_read,      // Señal de control 'MemRead' de la instrucción en EX
     input wire id_ex_reg_write,     // Señal 'RegWrite' de la instrucción en EX
+    input wire id_ex_wb_jump,       // Indica si la instrucción en EX es JAL o JALR (escribe PC+4)
     input wire [4:0] id_ex_rd,      // Registro destino de la instrucción en EX
 
     // Entradas desde la etapa de memoria (EX/MEM)
@@ -10,6 +14,7 @@ module hazard_detection_unit (
 
     // Entradas desde la etapa de decodificación (IF/ID)
     input wire if_id_branch,        // Indica si la instrucción actual en ID es un salto
+    input wire if_id_jalr,          // Indica si la instrucción actual en ID es un JALR
     input wire [4:0] if_id_rs1,     // Registro fuente 1 de la instrucción en ID
     input wire [4:0] if_id_rs2,     // Registro fuente 2 de la instrucción en ID
 
@@ -28,9 +33,9 @@ module hazard_detection_unit (
         // Condición de detección de riesgo "Load-Use"
         // Si la instrucción en EX es una lectura de memoria (Load) y su registro 
         // destino coincide con alguno de los registros fuente de la instrucción en ID...
-        if (id_ex_mem_read == 1'b1 && 
-            (id_ex_rd != 5'b0) && // ignorar el registro x0
-            ((id_ex_rd == if_id_rs1) || (id_ex_rd == if_id_rs2))) begin
+        // Load-Use general (evitando comparar rs2 si es JALR)
+        if (id_ex_mem_read && (id_ex_rd != 5'b0) &&
+            ((id_ex_rd == if_id_rs1) || (!if_id_jalr && (id_ex_rd == if_id_rs2)))) begin
             
             // ...se detecta un riesgo. Hay que insertar una burbuja (stall).
             pc_write = 1'b0;       // Congela el PC (re-fecth de la misma instrucción)
@@ -40,8 +45,11 @@ module hazard_detection_unit (
 
         // Riesgo Branch dependiente de una instrucción ALU en EX (Stall de 1 ciclo)
         // El salto se congela 1 ciclo hasta que la instrucción aritmética avance a MEM
-        else if (if_id_branch == 1'b1 && id_ex_reg_write == 1'b1 && (id_ex_rd != 5'b0) &&
-                ((id_ex_rd == if_id_rs1) || (id_ex_rd == if_id_rs2))) begin
+        // Branch o JALR dependiente de ALU en EX (ignora JAL/JALR gracias a !id_ex_wb_jump)
+        else if (id_ex_reg_write && !id_ex_wb_jump && (id_ex_rd != 5'b0) && (
+            (if_id_branch && ((id_ex_rd == if_id_rs1) || (id_ex_rd == if_id_rs2))) ||
+            (if_id_jalr   &&  (id_ex_rd == if_id_rs1)))) begin
+
             pc_write = 1'b0;
             if_id_write = 1'b0;
             ctrl_mux_sel = 1'b0;
@@ -50,12 +58,15 @@ module hazard_detection_unit (
         // Riesgo Branch dependiente de un Load en MEM (2do ciclo de stall)
         // El Load avanzó a MEM, pero el dato de la RAM aún no se ha leído. 
         // Se congela 1 ciclo más hasta que el Load alcance la etapa WB.
-        else if (if_id_branch == 1'b1 && ex_mem_mem_read == 1'b1 && (ex_mem_rd != 5'b0) &&
-                ((ex_mem_rd == if_id_rs1) || (ex_mem_rd == if_id_rs2))) begin
+        else if (ex_mem_mem_read && (ex_mem_rd != 5'b0) && (
+            (if_id_branch && ((ex_mem_rd == if_id_rs1) || (ex_mem_rd == if_id_rs2))) ||
+            (if_id_jalr   &&  (ex_mem_rd == if_id_rs1)))) begin
+                
             pc_write = 1'b0;
             if_id_write = 1'b0;
             ctrl_mux_sel = 1'b0;
         end
     end
 
+`default_nettype wire
 endmodule

@@ -30,13 +30,16 @@ module id_stage (
     // Desde ID/EX
     input  wire        i_id_ex_mem_read,
     input  wire        i_id_ex_reg_write,
+    input  wire        i_id_ex_wb_jump,
     input  wire [4:0]  i_id_ex_rd,
     
     // Desde EX/MEM
     input  wire        i_ex_mem_reg_write,
     input  wire        i_ex_mem_mem_read,
+    input  wire        i_ex_mem_wb_jump,
     input  wire [4:0]  i_ex_mem_rd,
-    input  wire [31:0] i_ex_mem_alu_result, // Dato para adelantar
+    input  wire [31:0] i_ex_mem_alu_result, // Dato ALU para adelantar
+    input  wire [31:0] i_ex_mem_pc_plus_4,  // Dato PC+4 para adelantar (JAL/JALR)
 
     // -------------------------------------------------------------------------
     // Salidas de Control del Pipeline (Hacia IF y Registro IF/ID)
@@ -91,8 +94,9 @@ module id_stage (
     wire       take_branch;
 
     // Cables de datos con posible adelantamiento (Forwarding)
-    wire [1:0] forward_a_id;
-    wire [1:0] forward_b_id;
+    wire [1:0]  forward_a_id;
+    wire [1:0]  forward_b_id;
+    wire [31:0] ex_mem_fwd_data;
     wire [31:0] cmp_data1;
     wire [31:0] cmp_data2;
 
@@ -127,10 +131,12 @@ module id_stage (
     hazard_detection_unit hdu (
         .id_ex_mem_read  (i_id_ex_mem_read),
         .id_ex_reg_write (i_id_ex_reg_write),
+        .id_ex_wb_jump   (i_id_ex_wb_jump),
         .id_ex_rd        (i_id_ex_rd),
         .ex_mem_mem_read (i_ex_mem_mem_read),
         .ex_mem_rd       (i_ex_mem_rd),
         .if_id_branch    (ctrl_branch),
+        .if_id_jalr      (ctrl_jalr),
         .if_id_rs1       (rs1_addr),
         .if_id_rs2       (rs2_addr),
         .pc_write        (o_pc_write),
@@ -188,12 +194,20 @@ module id_stage (
         .forward_b_id     (forward_b_id)
     );
 
+    // Selección del dato a adelantar desde EX/MEM (ALU o PC+4 si es JAL/JALR)
+    mux2 #(.NB(32)) mux_ex_mem_fwd (
+        .i_sel (i_ex_mem_wb_jump),
+        .i_d0  (i_ex_mem_alu_result),
+        .i_d1  (i_ex_mem_pc_plus_4),
+        .o_out (ex_mem_fwd_data)
+    );
+
     // MUX para adelantar el Operando A (rs1) en ID
     mux3 #(.NB(32)) mux_id_fwd_a (
         .i_sel (forward_a_id),
         .i_d0  (o_rs1_data),           // 00: Dato del registro normal
         .i_d1  (i_wb_write_data),      // 01: Dato adelantado desde MEM/WB
-        .i_d2  (i_ex_mem_alu_result),  // 10: Dato adelantado desde EX/MEM
+        .i_d2  (ex_mem_fwd_data),      // 10: Dato adelantado desde EX/MEM (ALU o PC+4)
         .o_out (cmp_data1)
     );
 
@@ -202,7 +216,7 @@ module id_stage (
         .i_sel (forward_b_id),
         .i_d0  (o_rs2_data),           // 00: Dato del registro normal
         .i_d1  (i_wb_write_data),      // 01: Dato adelantado desde MEM/WB
-        .i_d2  (i_ex_mem_alu_result),  // 10: Dato adelantado desde EX/MEM
+        .i_d2  (ex_mem_fwd_data),      // 10: Dato adelantado desde EX/MEM (ALU o PC+4)
         .o_out (cmp_data2)
     );
 
@@ -232,19 +246,18 @@ module id_stage (
     assign o_branch_target = {branch_target_raw[31:1], 1'b0};
 
     // Lógica para decidir si tomar un salto (BEQ/BNE o JAL/JALR)
-    assign o_pc_src = (ctrl_branch & take_branch) | ctrl_jump;
+    assign o_pc_src  = ctrl_mux_sel & ((ctrl_branch & take_branch) | ctrl_jump);
 
     // -------------------------------------------------------------------------
     // Asignación de campos del Datapath hacia el Latch ID/EX
     // -------------------------------------------------------------------------
-    assign o_pc        = i_pc                ;
-    assign o_pc_plus_4 = i_pc_plus_4         ;
-    assign o_rs1       = rs1_addr            ;
-    assign o_rs2       = rs2_addr            ;
-    assign o_rd        = rd_addr             ;
-    assign o_funct3    = i_instruction[14:12];
-    assign o_funct7_5  = i_instruction[30]   ;
-    assign o_wb_jump   = ctrl_jump | ctrl_jalr;
-
+    assign o_pc        = i_pc                                       ;
+    assign o_pc_plus_4 = i_pc_plus_4                                ;
+    assign o_rs1       = rs1_addr                                   ;
+    assign o_rs2       = rs2_addr                                   ;
+    assign o_rd        = rd_addr                                    ;
+    assign o_funct3    = i_instruction[14:12]                       ;
+    assign o_funct7_5  = i_instruction[30]                          ;
+    assign o_wb_jump   = ctrl_mux_sel ? (ctrl_jump | ctrl_jalr) : 1'b0;
 endmodule
 `default_nettype wire

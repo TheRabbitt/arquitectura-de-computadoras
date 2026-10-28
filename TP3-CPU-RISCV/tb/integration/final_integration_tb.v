@@ -65,6 +65,7 @@ module tb_pipeline;
 
     // EX -> EX/MEM
     wire [31:0] ex_alu_result, ex_rs2_data, ex_pc_plus_4;
+    wire [2:0]  ex_funct3;
     wire        ex_wb_jump;
 
     // EX/MEM -> MEM
@@ -72,6 +73,7 @@ module tb_pipeline;
     wire        ex_mem_m_mem_read, ex_mem_m_mem_write;
     wire [31:0] ex_mem_alu_result, ex_mem_rs2_data, ex_mem_pc_plus_4;
     wire [4:0]  ex_mem_rd;
+    wire [2:0]  ex_mem_funct3;
 
     // MEM -> MEM/WB
     wire        mem_wb_reg_write_out, mem_wb_mem_to_reg_out, mem_wb_jump;
@@ -109,9 +111,11 @@ module tb_pipeline;
     id_stage u_stage_id (
         .i_clk(clk), .i_rst(rst), .i_pc(if_id_pc), .i_pc_plus_4(if_id_pc_plus_4), .i_instruction(if_id_instr),
         .i_wb_reg_write(wb_reg_write_final), .i_wb_write_reg(wb_rd_final), .i_wb_write_data(wb_write_data),
-        .i_id_ex_mem_read(id_ex_m_mem_read), .i_id_ex_reg_write(id_ex_wb_reg_write), .i_id_ex_rd(id_ex_rd),
+        .i_id_ex_mem_read(id_ex_m_mem_read), .i_id_ex_reg_write(id_ex_wb_reg_write),
+        .i_id_ex_wb_jump(id_ex_wb_jump), .i_id_ex_rd(id_ex_rd),
         .i_ex_mem_reg_write(ex_mem_wb_reg_write), .i_ex_mem_mem_read(ex_mem_m_mem_read),
-        .i_ex_mem_rd(ex_mem_rd), .i_ex_mem_alu_result(ex_mem_alu_result),
+        .i_ex_mem_wb_jump(ex_mem_wb_jump), .i_ex_mem_rd(ex_mem_rd),
+        .i_ex_mem_alu_result(ex_mem_alu_result), .i_ex_mem_pc_plus_4(ex_mem_pc_plus_4),
         .o_pc_write(id_pc_write), .o_if_id_write(id_if_id_write), .o_pc_src(id_pc_src), .o_branch_target(id_branch_target),
         .o_wb_reg_write(id_wb_reg_write), .o_wb_mem_to_reg(id_wb_mem_to_reg),
         .o_m_mem_read(id_m_mem_read), .o_m_mem_write(id_m_mem_write),
@@ -144,19 +148,20 @@ module tb_pipeline;
         .i_funct3(id_ex_funct3), .i_funct7_5(id_ex_funct7_5),
         .i_rs1(id_ex_rs1), .i_rs2(id_ex_rs2),
         .i_read_data1(id_ex_rs1_data), .i_read_data2(id_ex_rs2_data), .i_imm(id_ex_imm), .i_pc_plus_4(id_ex_pc_plus_4), .i_wb_jump(id_ex_wb_jump),
-        .i_ex_mem_rd(ex_mem_rd), .i_ex_mem_regwrite(ex_mem_wb_reg_write), .i_ex_mem_alu_result(ex_mem_alu_result),
-        .i_mem_wb_rd(wb_rd_final), .i_mem_wb_regwrite(wb_reg_write_final), .i_mem_wb_data(wb_write_data),
-        .o_alu_result(ex_alu_result), .o_rs2_data(ex_rs2_data), .o_pc_plus_4(ex_pc_plus_4), .o_wb_jump(ex_wb_jump)
+        .i_ex_mem_rd(ex_mem_rd), .i_ex_mem_regwrite(ex_mem_wb_reg_write), .i_ex_mem_wb_jump(ex_mem_wb_jump),
+        .i_ex_mem_alu_result(ex_mem_alu_result), .i_ex_mem_pc_plus_4(ex_mem_pc_plus_4),
+        .i_mem_wb_rd(wb_rd_final), .i_mem_wb_regwrite(wb_reg_write_final), .i_mem_wb_data(wb_write_data), .i_mem_wb_pc_plus_4(wb_pc_plus_4_final),
+        .o_alu_result(ex_alu_result), .o_rs2_data(ex_rs2_data), .o_pc_plus_4(ex_pc_plus_4), .o_funct3(ex_funct3), .o_wb_jump(ex_wb_jump)
     );
 
     ex_mem_latch u_ex_mem (
         .clk(clk), .rst(rst), .i_enable(enable),
         .i_wb_regwrite(id_ex_wb_reg_write), .i_wb_memtoreg(id_ex_wb_mem_to_reg), .i_wb_jump(id_ex_wb_jump),
         .i_m_memread(id_ex_m_mem_read), .i_m_memwrite(id_ex_m_mem_write),
-        .i_alu_result(ex_alu_result), .i_rs2_data(ex_rs2_data), .i_rd(id_ex_rd), .i_pc_plus_4(id_ex_pc_plus_4),
+        .i_alu_result(ex_alu_result), .i_rs2_data(ex_rs2_data), .i_rd(id_ex_rd), .i_funct3(ex_funct3), .i_pc_plus_4(id_ex_pc_plus_4),
         .o_wb_regwrite(ex_mem_wb_reg_write), .o_wb_memtoreg(ex_mem_wb_mem_to_reg),
         .o_m_memread(ex_mem_m_mem_read), .o_m_memwrite(ex_mem_m_mem_write),
-        .o_alu_result(ex_mem_alu_result), .o_rs2_data(ex_mem_rs2_data), .o_rd(ex_mem_rd),
+        .o_alu_result(ex_mem_alu_result), .o_rs2_data(ex_mem_rs2_data), .o_rd(ex_mem_rd), .o_funct3(ex_mem_funct3),
         .o_wb_jump(ex_mem_wb_jump), .o_pc_plus_4(ex_mem_pc_plus_4)
     );
 
@@ -164,7 +169,7 @@ module tb_pipeline;
         .i_clk(clk),
         .i_wb_reg_write(ex_mem_wb_reg_write), .i_wb_mem_to_reg(ex_mem_wb_mem_to_reg), .i_wb_jump(ex_mem_wb_jump),
         .i_m_mem_read(ex_mem_m_mem_read), .i_m_mem_write(ex_mem_m_mem_write),
-        .i_alu_result(ex_mem_alu_result), .i_rs2_data(ex_mem_rs2_data), .i_rd(ex_mem_rd), .i_pc_plus_4(ex_mem_pc_plus_4),
+        .i_alu_result(ex_mem_alu_result), .i_rs2_data(ex_mem_rs2_data), .i_rd(ex_mem_rd), .i_funct3(ex_mem_funct3), .i_pc_plus_4(ex_mem_pc_plus_4),
         .i_debug_re(1'b0), .i_debug_addr(8'b0), .o_debug_rdata(),
         .o_wb_reg_write(mem_wb_reg_write_out), .o_wb_mem_to_reg(mem_wb_mem_to_reg_out), .o_wb_jump(mem_wb_jump),
         .o_read_data(mem_read_data), .o_alu_result(mem_alu_result), .o_rd(mem_rd), .o_pc_plus_4(mem_pc_plus_4)
@@ -270,3 +275,4 @@ module tb_pipeline;
     end
 
 endmodule
+`default_nettype wire
