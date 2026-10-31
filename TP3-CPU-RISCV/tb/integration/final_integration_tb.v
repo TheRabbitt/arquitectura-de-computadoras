@@ -236,18 +236,65 @@ module tb_pipeline;
         u_stage_if.u_imem.mem[26] = 32'h00405c03; // 0x68: lhu x24, 4(x0)        (I-Type Load)
         u_stage_if.u_imem.mem[27] = 32'h00804c83; // 0x6C: lbu x25, 8(x0)        (I-Type Load)
 
-        // -- Bloque 5: Saltos B-Type, J-Type y JALR --
+        // -- Bloque 5: Saltos B-Type, J-Type y JALR (sin stall tras JAL) --
         u_stage_if.u_imem.mem[28] = 32'h016a8463; // 0x70: beq x21, x22, 8       (B-Type) (Salta a 0x78)
         u_stage_if.u_imem.mem[29] = 32'h00000013; // 0x74: nop                   (Ignorado por salto)
         u_stage_if.u_imem.mem[30] = 32'h000a9463; // 0x78: bne x21, x0, 8        (B-Type) (Salta a 0x80)
         u_stage_if.u_imem.mem[31] = 32'h00000013; // 0x7C: nop
         u_stage_if.u_imem.mem[32] = 32'h00800d6f; // 0x80: jal x26, 8            (J-Type) (Salta a 0x88, x26=0x84)
         u_stage_if.u_imem.mem[33] = 32'h00000013; // 0x84: nop
-        u_stage_if.u_imem.mem[34] = 32'h000d0067; // 0x88: jalr x0, x26, 0       (I-Type Salto) (Retorna a 0x84)
-        u_stage_if.u_imem.mem[35] = 32'h00000013; // 0x8C: nop
+        u_stage_if.u_imem.mem[34] = 32'h00cd0067; // 0x88: jalr x0, x26, 12      (Salta a 0x84+12 = 0x90 sin stall)
+        u_stage_if.u_imem.mem[35] = 32'h00000013; // 0x8C: nop                   (Ignorado por flush de jalr)
+
+        // -- Bloque 6: SLTI, SLTIU, SLLI y SLL con Números Negativos --
+        u_stage_if.u_imem.mem[36] = 32'hff600d93; // 0x90: addi x27, x0, -10     (x27 = 0xFFFFFFF6 = -10)
+        u_stage_if.u_imem.mem[37] = 32'hffbda313; // 0x94: slti x6, x27, -5      (-10 < -5 con signo  -> x6 = 1)
+        u_stage_if.u_imem.mem[38] = 32'hfecda393; // 0x98: slti x7, x27, -20     (-10 < -20 con signo -> x7 = 0)
+        u_stage_if.u_imem.mem[39] = 32'hffb12413; // 0x9C: slti x8, x2, -5       (10 < -5 con signo   -> x8 = 0)
+        u_stage_if.u_imem.mem[40] = 32'hffb13493; // 0xA0: sltiu x9, x2, -5      (10 < 0xFFFFFFFB u   -> x9 = 1)
+        u_stage_if.u_imem.mem[41] = 32'h014db513; // 0xA4: sltiu x10, x27, 20    (0xFFFFFFF6 < 20 u   -> x10 = 0)
+        u_stage_if.u_imem.mem[42] = 32'hffbdb593; // 0xA8: sltiu x11, x27, -5    (0xFFFFFFF6 < 0xFFFFFFFB u -> x11 = 1)
+        u_stage_if.u_imem.mem[43] = 32'h002d9613; // 0xAC: slli x12, x27, 2      (0xFFFFFFF6 << 2     -> x12 = 0xFFFFFFD8)
+        u_stage_if.u_imem.mem[44] = 32'h002d96b3; // 0xB0: sll x13, x27, x2      (0xFFFFFFF6 << 10    -> x13 = 0xFFFFD800)
+        u_stage_if.u_imem.mem[45] = 32'h01bd9733; // 0xB4: sll x14, x27, x27     (0xFFFFFFF6 << 22    -> x14 = 0xFD800000)
+
+        // -- Bloque 7: Sub-palabra (SB, SH, LB, LBU, LH, LHU) con Negativos y Offsets 0..3 --
+        u_stage_if.u_imem.mem[46] = 32'hf8000793; // 0xB8: addi x15, x0, -128    (x15 = 0xFFFFFF80)
+        u_stage_if.u_imem.mem[47] = 32'hed400813; // 0xBC: addi x16, x0, -300    (x16 = 0xFFFFFED4)
+        u_stage_if.u_imem.mem[48] = 32'h00200623; // 0xC0: sb x2, 12(x0)         (ram[3][7:0]   = 0x0A)
+        u_stage_if.u_imem.mem[49] = 32'h00f006a3; // 0xC4: sb x15, 13(x0)        (ram[3][15:8]  = 0x80)
+        u_stage_if.u_imem.mem[50] = 32'h01001723; // 0xC8: sh x16, 14(x0)        (ram[3][31:16] = 0xFED4 -> ram[3]=0xFED4800A)
+        u_stage_if.u_imem.mem[51] = 32'h00c02883; // 0xCC: lw x17, 12(x0)        (x17 = 0xFED4800A)
+        u_stage_if.u_imem.mem[52] = 32'h00d00903; // 0xD0: lb x18, 13(x0)        (x18 = 0xFFFFFF80, extensión de signo)
+        u_stage_if.u_imem.mem[53] = 32'h00d04983; // 0xD4: lbu x19, 13(x0)       (x19 = 0x00000080, extensión con ceros)
+        u_stage_if.u_imem.mem[54] = 32'h00e01a03; // 0xD8: lh x20, 14(x0)        (x20 = 0xFFFFFED4, extensión de signo)
+        u_stage_if.u_imem.mem[55] = 32'h00e05a83; // 0xDC: lhu x21, 14(x0)       (x21 = 0x0000FED4, extensión con ceros)
+        u_stage_if.u_imem.mem[56] = 32'h00f00b03; // 0xE0: lb x22, 15(x0)        (x22 = 0xFFFFFFFE, byte 3 con signo)
+        u_stage_if.u_imem.mem[57] = 32'h00f04b83; // 0xE4: lbu x23, 15(x0)       (x23 = 0x000000FE, byte 3 sin signo)
+
+        // -- Bloque 8: Riesgos con Stall (Load-Use, ALU->BEQ, Load->BEQ, ALU->JALR, Load->JALR) --
+        u_stage_if.u_imem.mem[58] = 32'h00002c03; // 0xE8:  lw x24, 0(x0)        (x24 = 0x0000000A)
+        u_stage_if.u_imem.mem[59] = 32'h005c0c93; // 0xEC:  addi x25, x24, 5     (1 stall Load-Use -> x25 = 0x0000000F)
+        u_stage_if.u_imem.mem[60] = 32'h00f00e13; // 0xF0:  addi x28, x0, 15     (x28 = 0x0000000F)
+        u_stage_if.u_imem.mem[61] = 32'h019e0463; // 0xF4:  beq x28, x25, 8      (1 stall ALU->BEQ -> salta a 0xFC)
+        u_stage_if.u_imem.mem[62] = 32'h06300e13; // 0xF8:  addi x28, x0, 99     (Descartada por flush)
+        u_stage_if.u_imem.mem[63] = 32'h00002e83; // 0xFC:  lw x29, 0(x0)        (x29 = 0x0000000A)
+        u_stage_if.u_imem.mem[64] = 32'h002e8463; // 0x100: beq x29, x2, 8       (2 stalls Load->BEQ -> salta a 0x108)
+        u_stage_if.u_imem.mem[65] = 32'h06300e93; // 0x104: addi x29, x0, 99     (Descartada por flush)
+        u_stage_if.u_imem.mem[66] = 32'h11400f13; // 0x108: addi x30, x0, 276    (x30 = 0x00000114)
+        u_stage_if.u_imem.mem[67] = 32'h000f0067; // 0x10C: jalr x0, x30, 0      (1 stall ALU->JALR -> salta a 0x114)
+        u_stage_if.u_imem.mem[68] = 32'h06300f13; // 0x110: addi x30, x0, 99     (Descartada por flush)
+        u_stage_if.u_imem.mem[69] = 32'h12800f13; // 0x114: addi x30, x0, 296    (x30 = 0x00000128)
+        u_stage_if.u_imem.mem[70] = 32'h01e02823; // 0x118: sw x30, 16(x0)       (Guarda 0x128 en ram[4])
+        u_stage_if.u_imem.mem[71] = 32'h01002f83; // 0x11C: lw x31, 16(x0)       (x31 = 0x00000128)
+        u_stage_if.u_imem.mem[72] = 32'h000f8d67; // 0x120: jalr x26, x31, 0     (2 stalls Load->JALR -> salta a 0x128, x26=0x124)
+        u_stage_if.u_imem.mem[73] = 32'h06300f93; // 0x124: addi x31, x0, 99     (Descartada por flush)
+        u_stage_if.u_imem.mem[74] = 32'h06400f93; // 0x128: addi x31, x0, 100    (x31 = 0x00000064 -> Fin exitoso)
+        u_stage_if.u_imem.mem[75] = 32'h00000063; // 0x12C: beq x0, x0, 0        (Bucle final de parada en 0x12C)
+        u_stage_if.u_imem.mem[76] = 32'h00000013; // 0x130: nop
 
         // Finalización extendida para permitir que todo el pipeline procese el programa
-        #1000;
+        #1100;
         $finish;
     end
 
