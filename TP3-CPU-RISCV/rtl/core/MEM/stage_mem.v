@@ -20,6 +20,7 @@ module stage_mem #(
     // Control WB (Write-Back)
     input  wire                  i_wb_reg_write,
     input  wire                  i_wb_mem_to_reg,
+    input  wire                  i_wb_jump,
     
     // Control MEM (Memoria)
     input  wire                  i_m_mem_read,
@@ -29,7 +30,8 @@ module stage_mem #(
     input  wire [DATA_WIDTH-1:0] i_alu_result, // Dirección de memoria / Dato calculado por la ALU
     input  wire [DATA_WIDTH-1:0] i_rs2_data,   // Dato a escribir en memoria (Store)
     input  wire [4:0]            i_rd,         // Registro destino
-    input  wire [DATA_WIDTH-1:0] i_pc_plus_4,   // Dirección de retorno para JAL/JALR
+    input  wire [2:0]            i_funct3,     // Tipo de acceso a memoria (LB/LH/LW/LBU/LHU, SB/SH/SW)
+    input  wire [DATA_WIDTH-1:0] i_pc_plus_4,  // Dirección de retorno para JAL/JALR
     
     // -------------------------------------------------------------------------
     // Interfaz de Debug / UART (hacia Memoria de Datos)
@@ -47,6 +49,7 @@ module stage_mem #(
     // Control WB (Passthrough)
     output wire                  o_wb_reg_write,
     output wire                  o_wb_mem_to_reg,
+    output wire                  o_wb_jump,
     
     // Datapath
     output wire [DATA_WIDTH-1:0] o_read_data,  // Dato leído de la memoria
@@ -64,6 +67,8 @@ module stage_mem #(
     assign o_wb_mem_to_reg = i_wb_mem_to_reg;
     assign o_alu_result    = i_alu_result;
     assign o_rd            = i_rd;
+    assign o_pc_plus_4     = i_pc_plus_4;
+    assign o_wb_jump       = i_wb_jump;
 
     // -------------------------------------------------------------------------
     // Instanciación de la Memoria de Datos (Data Memory)
@@ -75,9 +80,10 @@ module stage_mem #(
         .i_clk         (i_clk),
         .i_mem_write   (i_m_mem_write),
         .i_mem_read    (i_m_mem_read),
+        .i_funct3      (i_funct3),
         .i_addr        (i_alu_result), // El resultado de la ALU actúa como dirección
-        .i_write_data  (i_rs2_data),   // RS2 contiene el dato a guardar en SW
-        .o_read_data   (o_read_data),  // Dato leído en LW hacia Write-Back
+        .i_write_data  (i_rs2_data),   // RS2 contiene el dato a guardar en SB/SH/SW
+        .o_read_data   (o_read_data),  // Dato leído y extendido (LB/LH/LW/LBU/LHU) hacia Write-Back
         
         // Interfaz de depuración dedicada (UART)
         .i_debug_re    (i_debug_re),

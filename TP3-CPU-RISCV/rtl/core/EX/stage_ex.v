@@ -8,6 +8,7 @@ module stage_ex (
     // Señales de Control
     input  wire [2:0]  i_alu_op,      // Código de operación para la ALU
     input  wire        i_alusrc,      // Selecciona entre RS2 y el inmediato
+    input  wire        i_wb_jump,     // Indica si la instrucción es JAL o JALR
 
     // Campos de la instrucción
     input  wire [2:0]  i_funct3,      // bits [14:12] de la instrucción
@@ -27,33 +28,42 @@ module stage_ex (
     // Desde el Latch EX/MEM
     input  wire [4:0]  i_ex_mem_rd,
     input  wire        i_ex_mem_regwrite,
+    input  wire        i_ex_mem_wb_jump,    // Indica si la instrucción en EX/MEM es JAL o JALR
     input  wire [31:0] i_ex_mem_alu_result, // Dato más reciente de la ALU
+    input  wire [31:0] i_ex_mem_pc_plus_4,  // Dirección de retorno PC+4 en EX/MEM
 
     // Desde el Latch MEM/WB
     input  wire [4:0]  i_mem_wb_rd,
     input  wire        i_mem_wb_regwrite,
     input  wire [31:0] i_mem_wb_data,       // Dato que se va a escribir en registros
+    input  wire [31:0] i_mem_wb_pc_plus_4,  // Dirección de retorno para JAL/JALR
 
     // -------------------------------------------------------------------------
     // Salidas hacia la etapa MEM (a través del registro EX/MEM)
     // -------------------------------------------------------------------------
     output wire [31:0] o_alu_result,  // Resultado calculado por la ALU
     output wire [31:0] o_rs2_data,    // Dato de RS2 (ya adelantado) para instrucciones Store
-    output wire [31:0] o_pc_plus_4    // Dirección de retorno para JAL/JALR
+    output wire [31:0] o_pc_plus_4,   // Dirección de retorno para JAL/JALR
+    output wire [2:0]  o_funct3,      // Pasaje de funct3 hacia etapa MEM (LB/LH/LW/LBU/LHU, SB/SH/SW)
+    output wire        o_wb_jump      // Indica si la instrucción es JAL o JALR
 );
 
     // -------------------------------------------------------------------------
     // Cables de interconexión interna
     // -------------------------------------------------------------------------
-    wire [1:0]  w_forward_a;
-    wire [1:0]  w_forward_b;
-    wire [3:0]  w_alu_ctrl;
-    wire [31:0] w_mux3_a_out;
-    wire [31:0] w_mux3_b_out;
-    wire [31:0] w_mux2_b_out;
+    wire [1:0]  w_forward_a      ;
+    wire [1:0]  w_forward_b      ;
+    wire [3:0]  w_alu_ctrl       ;
+    wire [31:0] w_ex_mem_fwd_data;
+    wire [31:0] w_mux3_a_out     ;
+    wire [31:0] w_mux3_b_out     ;
+    wire [31:0] w_mux2_b_out     ;
 
     // El dato a guardar en memoria (Store) es el resultado de RS2 con adelantamiento
-    assign o_rs2_data = w_mux3_b_out;
+    assign o_rs2_data  = w_mux3_b_out;
+    assign o_pc_plus_4 = i_pc_plus_4 ;
+    assign o_funct3    = i_funct3    ;
+    assign o_wb_jump   = i_wb_jump   ;
 
     // -------------------------------------------------------------------------
     // Instanciación de la Forwarding Unit
@@ -70,6 +80,16 @@ module stage_ex (
     );
 
     // -------------------------------------------------------------------------
+    // Selección del dato a adelantar desde EX/MEM (ALU o PC+4 si es JAL/JALR)
+    // -------------------------------------------------------------------------
+    mux2 #(32) u_mux2_ex_mem_fwd (
+        .i_sel (i_ex_mem_wb_jump),
+        .i_d0  (i_ex_mem_alu_result),
+        .i_d1  (i_ex_mem_pc_plus_4),
+        .o_out (w_ex_mem_fwd_data)
+    );
+
+    // -------------------------------------------------------------------------
     // Selección del Operando A de la ALU (ForwardA)
     // -------------------------------------------------------------------------
     // En la lógica de la forwarding_unit: 
@@ -80,7 +100,7 @@ module stage_ex (
         .i_sel (w_forward_a),
         .i_d0  (i_read_data1),         // Sin adelantamiento
         .i_d1  (i_mem_wb_data),        // Adelantamiento desde MEM/WB (01)
-        .i_d2  (i_ex_mem_alu_result),  // Adelantamiento desde EX/MEM (10)
+        .i_d2  (w_ex_mem_fwd_data),    // Adelantamiento desde EX/MEM (10: ALU o PC+4)
         .o_out (w_mux3_a_out)
     );
 
@@ -91,7 +111,7 @@ module stage_ex (
         .i_sel (w_forward_b),
         .i_d0  (i_read_data2),         // Sin adelantamiento
         .i_d1  (i_mem_wb_data),        // Adelantamiento desde MEM/WB (01)
-        .i_d2  (i_ex_mem_alu_result),  // Adelantamiento desde EX/MEM (10)
+        .i_d2  (w_ex_mem_fwd_data),    // Adelantamiento desde EX/MEM (10: ALU o PC+4)
         .o_out (w_mux3_b_out)
     );
 

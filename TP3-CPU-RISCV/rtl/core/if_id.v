@@ -16,9 +16,11 @@ module if_id_register #(
     // Entradas desde la etapa IF
     input  wire [NB-1:0] i_pc,
     input  wire [NB-1:0] i_instruction,
+    input  wire [NB-1:0] i_pc_plus_4,
 
     // Salidas hacia la etapa ID
     output reg  [NB-1:0] o_pc,
+    output reg  [NB-1:0] o_pc_plus_4,
     output reg  [NB-1:0] o_instruction
 );
 
@@ -27,11 +29,13 @@ module if_id_register #(
             // Al hacer flush o reset, inyectamos una burbuja (NOP) 
             // y limpiamos el PC para no ejecutar basura.
             o_pc          <= {NB{1'b0}};
+            o_pc_plus_4   <= {NB{1'b0}};
             o_instruction <= NOP_INSTR; 
         end
         else if (i_en) begin
             // Operación normal de pipeline
             o_pc          <= i_pc;
+            o_pc_plus_4   <= i_pc_plus_4;
             o_instruction <= i_instruction;
         end
     end
