@@ -2,7 +2,7 @@
 `default_nettype none
 
 module ex_mem_latch #(
-    parameter DEBUG_WIDTH = 75 // Ancho total de bits empaquetados para debug
+    parameter DEBUG_WIDTH = 128 // 4 palabras de 32 bits = 16 bytes para debug
 )(
     input  wire        clk,
     input  wire        rst,
@@ -11,6 +11,7 @@ module ex_mem_latch #(
     // i_enable = 1: El pipeline avanza normalmente.
     // i_enable = 0: El latch congela su estado para que la UART pueda transmitirlo.
     input  wire        i_enable,
+    input  wire        i_valid,
 
     // --------------------------------------------------------
     // Entradas desde la etapa EX (Execution)
@@ -39,17 +40,18 @@ module ex_mem_latch #(
     output reg         o_wb_jump,
     output reg         o_m_memread,
     output reg         o_m_memwrite,
+    output reg         o_valid,
 
     output reg  [31:0] o_alu_result,
     output reg  [31:0] o_rs2_data,
     output reg  [4:0]  o_rd,
     output reg  [2:0]  o_funct3,
-    output reg  [31:0] o_pc_plus_4
+    output reg  [31:0] o_pc_plus_4,
 
     // --------------------------------------------------------
-    // Salida para la Unidad de UART / Debug
+    // Salida para la Unidad de UART / Debug (4 palabras = 16 bytes)
     // --------------------------------------------------------
-    // output wire [DEBUG_WIDTH-1:0] o_debug_ex_mem
+    output wire [DEBUG_WIDTH-1:0] o_debug_ex_mem
 );
 
     // Lógica secuencial del registro pipeline con Enable
@@ -62,6 +64,7 @@ module ex_mem_latch #(
 
             o_m_memread   <= 1'b0;
             o_m_memwrite  <= 1'b0;
+            o_valid       <= 1'b0;
 
             o_alu_result  <= 32'b0;
             o_rs2_data    <= 32'b0;
@@ -77,6 +80,7 @@ module ex_mem_latch #(
 
             o_m_memread   <= i_m_memread;
             o_m_memwrite  <= i_m_memwrite;
+            o_valid       <= i_valid;
 
             o_alu_result  <= i_alu_result;
             o_rs2_data    <= i_rs2_data;
@@ -87,20 +91,30 @@ module ex_mem_latch #(
         // Si i_enable es 0, los registros mantienen su valor actual (Hold)
     end
 
-    // Empaquetado de todos los bits del latch en un único vector continuo
-    // Total = 1 + 1 + 1 + 1 + 1 + 32 + 1 + 32 + 5 = 75 bits
-    // assign o_debug_ex_mem = {
-    //     o_wb_regwrite, // [74]
-    //     o_wb_memtoreg, // [73]
-    //     o_m_branch,    // [72]
-    //     o_m_memread,   // [71]
-    //     o_m_memwrite,  // [70]
-    //     o_alu_result,  // [69:38]
-    //     o_alu_zero,    // [37]
-    //     o_rs2_data,    // [36:5]
-    //     o_rd           // [4:0]
-    // };
-    // Agregar wb_jump, funct3 y pc_plus_4 al vector de debug
+    // Empaquetado alineado a palabras de 32 bits (4 palabras = 16 bytes):
+    // Word 0 [31:0]   : o_alu_result
+    // Word 1 [63:32]  : o_rs2_data
+    // Word 2 [95:64]  : o_pc_plus_4
+    // Word 3 [127:96] : {18'd0, o_valid, o_wb_jump, o_wb_memtoreg, o_wb_regwrite,
+    //                    o_m_memwrite, o_m_memread, o_funct3, o_rd}
+    wire [31:0] w_ctrl_word = {
+        18'd0,
+        o_valid,       // [13]
+        o_wb_jump,     // [12]
+        o_wb_memtoreg, // [11]
+        o_wb_regwrite, // [10]
+        o_m_memwrite,  // [9]
+        o_m_memread,   // [8]
+        o_funct3,      // [7:5]
+        o_rd           // [4:0]
+    };
+
+    assign o_debug_ex_mem = {
+        w_ctrl_word,
+        o_pc_plus_4,
+        o_rs2_data,
+        o_alu_result
+    };
 
 endmodule
 `default_nettype wire

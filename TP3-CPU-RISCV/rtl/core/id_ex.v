@@ -5,8 +5,8 @@
 // Módulo: id_ex_register
 // Descripción: Latch/Registro de Pipeline entre las etapas ID (Instruction Decode)
 //              y EX (Execute) para un procesador RISC-V de 5 etapas.
-//              Almacena las señales de control (WB, M, EX) y datos del datapath.
-//              Incluye bus de depuración (o_debug_id_ex) para serialización UART.
+//              Almacena las señales de control (WB, M, EX), bit de validez y
+//              datos del datapath. Incluye bus de depuración (o_debug_id_ex).
 //==============================================================================
 
 module id_ex_register #(
@@ -16,6 +16,7 @@ module id_ex_register #(
     input  wire                 i_clk,
     input  wire                 i_rst,
     input  wire                 i_en,      // Enable/Stall (1: actualiza, 0: congela el latch)
+    input  wire                 i_valid,   // Indica si la instrucción que entra desde ID es válida
 
     // -------------------------------------------------------------------------
     // Entradas de Control (desde Control Unit / Mux de Hazards en ID)
@@ -56,6 +57,7 @@ module id_ex_register #(
     output reg                  o_m_mem_write,
     output reg                  o_ex_alu_src,
     output reg  [2:0]           o_ex_alu_op,
+    output reg                  o_valid,
 
     // -------------------------------------------------------------------------
     // Salidas de Datapath (hacia etapa EX)
@@ -70,11 +72,12 @@ module id_ex_register #(
     output reg  [NB_REG-1:0]    o_rd,
     output reg  [2:0]           o_funct3,
     output reg                  o_funct7_5,
-    output reg                  o_wb_jump
+    output reg                  o_wb_jump,
+
     // -------------------------------------------------------------------------
-    // Puerto de Depuración (Debug Unit / UART)
+    // Puerto de Depuración (Debug Unit / UART): 6 palabras de 32 bits = 24 bytes
     // -------------------------------------------------------------------------
-    // output wire [155:0]         o_debug_id_ex
+    output wire [191:0]         o_debug_id_ex
 );
 
     // -------------------------------------------------------------------------
@@ -88,7 +91,8 @@ module id_ex_register #(
             o_m_mem_read    <= 1'b0;
             o_m_mem_write   <= 1'b0;
             o_ex_alu_src    <= 1'b0;
-            o_ex_alu_op     <= 2'b00;
+            o_ex_alu_op     <= 3'b000;
+            o_valid         <= 1'b0;
             
             o_pc            <= {NB_DATA{1'b0}};
             o_pc_plus_4     <= {NB_DATA{1'b0}};
@@ -110,6 +114,7 @@ module id_ex_register #(
             o_m_mem_write   <= i_m_mem_write;
             o_ex_alu_src    <= i_ex_alu_src;
             o_ex_alu_op     <= i_ex_alu_op;
+            o_valid         <= i_valid;
                 
             o_pc            <= i_pc;
             o_pc_plus_4     <= i_pc_plus_4;
@@ -126,27 +131,41 @@ module id_ex_register #(
     end
 
     // -------------------------------------------------------------------------
-    // Empaquetado de Datos para transmisión UART / Debug Unit
-    // Unifica los 154 bits del latch para que la Debug Unit los lea y envie byte a byte.
+    // Empaquetado alineado a palabras de 32 bits (6 palabras = 24 bytes):
+    // Word 0 [31:0]    : o_pc
+    // Word 1 [63:32]   : o_pc_plus_4
+    // Word 2 [95:64]   : o_rs1_data
+    // Word 3 [127:96]  : o_rs2_data
+    // Word 4 [159:128] : o_imm
+    // Word 5 [191:160] : {3'b0, o_valid, o_wb_jump, o_wb_mem_to_reg, o_wb_reg_write,
+    //                     o_m_mem_write, o_m_mem_read, o_ex_alu_src, o_ex_alu_op,
+    //                     o_funct7_5, o_funct3, o_rd, o_rs2, o_rs1}
     // -------------------------------------------------------------------------
-    // assign o_debug_id_ex = {
-    //     o_wb_reg_write,  // [155]    (1 bit)
-    //     o_wb_mem_to_reg, // [154]    (1 bit)
-    //     o_m_mem_read,    // [153]    (1 bit)
-    //     o_m_mem_write,   // [152]    (1 bit)
-    //     o_ex_alu_src,    // [151]    (1 bit)
-    //     o_ex_alu_op,     // [150:148](3 bits)
-    //     o_pc,            // [147:116](32 bits)
-    //     o_rs1_data,      // [115:84] (32 bits)
-    //     o_rs2_data,      // [83:52]  (32 bits)
-    //     o_imm,           // [51:20]  (32 bits)
-    //     o_rs1,           // [19:15]  (5 bits)
-    //     o_rs2,           // [14:10]   (5 bits)
-    //     o_rd,            // [9:5]    (5 bits)
-    //     o_funct3,        // [4:2]    (3 bits)
-    //     o_funct7_5,      // [1]      (1 bit)
-    //     o_wb_jump        // [0]    (1 bit)
-    // };
+    wire [31:0] w_ctrl_word = {
+        3'b000,
+        o_valid,         // [28]
+        o_wb_jump,       // [27]
+        o_wb_mem_to_reg, // [26]
+        o_wb_reg_write,  // [25]
+        o_m_mem_write,   // [24]
+        o_m_mem_read,    // [23]
+        o_ex_alu_src,    // [22]
+        o_ex_alu_op,     // [21:19]
+        o_funct7_5,      // [18]
+        o_funct3,        // [17:15]
+        o_rd,            // [14:10]
+        o_rs2,           // [9:5]
+        o_rs1            // [4:0]
+    };
+
+    assign o_debug_id_ex = {
+        w_ctrl_word,
+        o_imm,
+        o_rs2_data,
+        o_rs1_data,
+        o_pc_plus_4,
+        o_pc
+    };
 
 endmodule
 `default_nettype wire

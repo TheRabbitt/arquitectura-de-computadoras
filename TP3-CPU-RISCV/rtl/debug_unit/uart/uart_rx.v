@@ -1,9 +1,12 @@
+`timescale 1ns / 1ps
+`default_nettype none
+
 module uart_rx #(
     parameter DBIT = 8,           // Bits de datos (N)
     parameter SB_TICK = 16        // Ticks por bit (oversampling)
 )(
     input wire clk,               // Clock del sistema
-    input wire reset,             // Reset asíncrono
+    input wire reset,             // Reset sincrónico (activo en alto)
     input wire rx,                // Línea serial de entrada
     input wire s_tick,            // Tick del baud rate generator
     output reg rx_done_tick,      // Pulso cuando se completa recepción
@@ -23,7 +26,7 @@ module uart_rx #(
     reg [2:0] n_reg, n_next;              // Contador de bits (0-7)
     reg [DBIT-1:0] b_reg, b_next;         // Shift register para datos
 
-    // Registro de estado (con reset asíncrono)
+    // Registro de estado
     always @(posedge clk) begin
         if (reset) begin
             state_reg <= IDLE;
@@ -134,3 +137,4 @@ module uart_rx #(
     assign dout = b_reg;
 
 endmodule
+`default_nettype wire

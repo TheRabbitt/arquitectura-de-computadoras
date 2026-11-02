@@ -1,9 +1,12 @@
+`timescale 1ns / 1ps
+`default_nettype none
+
 module uart_tx #(
     parameter DBIT = 8,           // Bits de datos (N)
     parameter SB_TICK = 16        // Ticks por bit (oversampling)
 )(
     input wire clk,               // Clock del sistema
-    input wire reset,             // Reset asíncrono
+    input wire reset,             // Reset sincrónico (activo en alto)
     input wire tx_start,          // Señal para iniciar transmisión
     input wire s_tick,            // Tick del baud rate generator
     input wire [DBIT-1:0] din,    // Dato a transmitir
@@ -25,7 +28,7 @@ module uart_tx #(
     reg [DBIT-1:0] b_reg, b_next;         // Registro de datos a transmitir
     reg tx_reg, tx_next;                  // Bit actual en la línea TX
 
-    // Registro de estado (con reset asíncrono)
+    // Registro de estado
     always @(posedge clk) begin
         if (reset) begin
             state_reg <= IDLE;
@@ -128,3 +131,4 @@ module uart_tx #(
     assign tx = tx_reg;
 
 endmodule
+`default_nettype wire

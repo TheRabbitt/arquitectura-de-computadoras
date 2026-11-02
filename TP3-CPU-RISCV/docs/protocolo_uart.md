@@ -1,10 +1,7 @@
 # Protocolo UART — contrato PC ↔ FPGA
 
-**Estado: BORRADOR v0.1.** Este archivo es el contrato entre el equipo de
-Verilog y el equipo de Python. Antes de escribir la Debug Unit tiene que estar
-acordado y firmado por los dos. Cualquier cambio posterior se versiona acá
-arriba y se avisa: un cambio silencioso en este archivo cuesta un día de
-debugging a la otra mitad del equipo.
+**Estado: v1.0 (Implementado en `rtl/debug_unit/debug_unit.v`).** Este archivo
+define el contrato binario entre la FPGA y el software de la PC (CLI/GUI/TUI).
 
 ---
 
@@ -13,33 +10,32 @@ debugging a la otra mitad del equipo.
 | Parámetro | Valor | Por qué |
 |---|---|---|
 | Baud rate | 115200 | 9600 hace que un dump de 128 B tarde ~130 ms. En modo paso a paso eso es inusable. |
-| Formato | 8N1 (8 datos, sin paridad, 1 stop) | Estándar, y es lo que espera cualquier terminal. |
-| Control de flujo | Ninguno | CTS/RTS existen en la placa pero complican la FSM. Si aparecen bytes perdidos en dumps largos, reconsiderar. |
-| Puerto en la PC | `COMx` (Windows) / `/dev/ttyUSB0` (Linux) | Es el mismo cable USB de programación. |
+| Formato | 8N1 (8 datos, sin paridad, 1 stop) | Estándar, con sobremuestreo 16x (`DVSR = 54` a 100 MHz, error +0.47%). |
+| Control de flujo | Ninguno | Sin CTS/RTS. |
+| Puerto en la PC | `COMx` (Windows) / `/dev/ttyUSB0` (Linux) | Cable USB-UART integrado en Nexys 4. |
 
 **Endianness:** todos los valores multi-byte viajan en **little-endian**
 (byte menos significativo primero), igual que la memoria del procesador.
 Un `0xDEADBEEF` se transmite como `EF BE AD DE`.
 
-**Datos crudos, no ASCII.** Mandamos los bytes binarios, no texto hexadecimal.
-Es la mitad de bytes y le ahorra el parseo a la FSM. La conversión a algo
-legible es responsabilidad del software de la PC.
+**Instrucción de parada (`HALT`):** se utiliza la instrucción estándar de RV32I
+`ebreak` (`0x00100073`). Al decodificarse en la etapa ID, congela el PC, anula
+la instrucción posterior en IF/ID y permite que las instrucciones previas en
+EX/MEM/WB completen su ejecución hasta dejar los 4 latches vacíos (`valid = 0`).
 
 ---
 
 ## 2. Reglas generales
 
 1. **La FPGA nunca habla si no le preguntan**, con una sola excepción: el
-   evento `HALTED` (§5).
+   evento asíncrono `HALTED` (`0xF1`) al finalizar `RUN`.
 2. **Todo comando recibe respuesta.** Si un comando no genera datos, responde
-   `ACK`. Así el software siempre sabe si el comando llegó.
-3. **Ningún dump es válido antes de que el pipeline esté drenado.** El
-   comando `RUN` responde `ACK` al instante (arranqué) y `HALTED` mucho
-   después (terminé de verdad). Pedir un dump entre medio devuelve datos
-   inconsistentes. Ver `docs/decisiones.md`, decisión D-04.
-4. **Byte desconocido → `NAK` y la FSM vuelve a IDLE.** Nunca se cuelga
-   esperando un payload que no va a llegar.
-5. **El software de la PC usa timeouts** en cada lectura (sugerido: 1 s).
+   `ACK` (`0xA5`).
+3. **Ningún dump es válido mientras el core corre en modo continuo.** `RUN`
+   responde `ACK` al instante y envía `HALTED` recién cuando el pipeline quedó
+   completamente vacío.
+4. **Byte desconocido o comando inválido en el estado actual → `NAK` (`0x5A`)**
+   y la FSM vuelve a `IDLE` sin perder sincronismo de trama.
 
 ---
 
@@ -47,48 +43,44 @@ legible es responsabilidad del software de la PC.
 
 | Byte | Nombre | Payload que sigue | Respuesta |
 |------|--------|-------------------|-----------|
-| `0x01` | `RESET` | — | `ACK` |
-| `0x02` | `LOAD_PROG` | 2 B: cantidad N de instrucciones, luego N×4 B | `ACK` al final |
-| `0x10` | `RUN` | — | `ACK`, y más tarde `HALTED` |
-| `0x11` | `STEP` | — | `ACK` cuando avanzó 1 ciclo |
-| `0x20` | `DUMP_REGS` | — | 128 B (32 registros × 4 B, de x0 a x31) |
-| `0x21` | `DUMP_LATCHES` | — | ver §4 |
-| `0x22` | `DUMP_DMEM` | 2 B offset (palabra) + 2 B cantidad | cantidad×4 B |
-| `0x23` | `DUMP_PC` | — | 4 B |
+| `0x01` | `RESET` | — | `ACK` (`0xA5`) tras resetear PC, registros, latches y limpiar DMEM |
+| `0x02` | `LOAD_PROG` | 2 B: cantidad `N` de palabras (LE), luego `N×4` B (LE) | `ACK` (`0xA5`) tras escribir IMEM y limpiar estado (`NAK` si inválido) |
+| `0x10` | `RUN` | — | `ACK` (`0xA5`), y al vaciar el pipeline tras `ebreak`: `HALTED` (`0xF1`) |
+| `0x11` | `STEP` | — | `ACK` (`0xA5`) tras avanzar 1 ciclo de clock (`HALTED` `0xF1` si ya terminó) |
+| `0x20` | `DUMP_REGS` | — | 128 B (`32` registros × 4 B, de `x0` a `x31`, LE) |
+| `0x21` | `DUMP_LATCHES` | — | 72 B (`18` palabras de 32 bits, LE — ver §4) |
+| `0x22` | `DUMP_DMEM` | 2 B `offset` (palabra, LE) + 2 B `cantidad` (LE) | `cantidad×4` B (LE) (`NAK` si excede 256 palabras o `cantidad=0`) |
+| `0x23` | `DUMP_PC` | — | 4 B (`PC` actual, LE) |
 | `0x24` | `STATUS` | — | 1 B de flags (§5) |
-
-### Notas por comando
-
-- **`RESET`** deja el sistema en el mismo estado que después de un power-on.
-  Qué implica exactamente eso es la decisión D-02 y está sin cerrar.
-- **`LOAD_PROG`** solo se acepta con el core detenido. Si el core está
-  corriendo, responde `NAK`. La escritura entra por el segundo puerto de la
-  BRAM de programa.
-- **`STEP`** ejecuta **un ciclo de reloj del core**, no una instrucción. Con
-  el pipeline lleno, un ciclo hace avanzar cinco instrucciones a la vez;
-  eso es exactamente lo que la cátedra quiere que se vea.
-- **`DUMP_DMEM`** pide un rango en vez de la memoria entera. Volcar 1024
-  palabras a 115200 baudios son ~350 ms y casi siempre sobran.
+| `0x25` | `DUMP_DMEM_USED` | — | 2 B `K` (palabras usadas, LE) + `K × (2 B word_addr + 4 B data)` (LE) |
 
 ---
 
-## 4. Formato del dump de latches (`0x21`)
+## 4. Formato del dump de latches (`0x21` — 72 bytes / 18 palabras de 32 bits)
 
-**PENDIENTE.** No se puede completar hasta tener los latches diseñados.
-Estructura acordada: los cuatro bloques en orden IF/ID, ID/EX, EX/MEM, MEM/WB,
-cada uno redondeado hacia arriba a un múltiplo de 4 bytes, con los bits sin
-usar en cero.
+Los cuatro bloques se transmiten en orden **IF/ID, ID/EX, EX/MEM, MEM/WB**,
+alineados a palabras de 32 bits en little-endian (`struct.unpack('<18I', buf)`):
 
-| Latch | Campos | Bits | Bytes en el stream |
+| Índice Palabra | Bytes | Latch | Contenido |
 |---|---|---|---|
-| IF/ID  | pc, instr, valid | TBD | TBD |
-| ID/EX  | TBD | TBD | TBD |
-| EX/MEM | TBD | TBD | TBD |
-| MEM/WB | TBD | TBD | TBD |
-
-Cuando se llene esta tabla, generarla desde un único lugar (por ejemplo un
-`.json` que lea tanto el generador de Verilog como el parser de Python) para
-que no puedan desincronizarse.
+| `0` | `0..3` | **IF/ID** | `o_pc` (`[31:0]`) |
+| `1` | `4..7` | **IF/ID** | `o_pc_plus_4` (`[31:0]`) |
+| `2` | `8..11` | **IF/ID** | `o_instruction` (`[31:0]`) |
+| `3` | `12..15` | **IF/ID** | `[0]=valid`, `[31:1]=0` |
+| `4` | `16..19` | **ID/EX** | `o_pc` (`[31:0]`) |
+| `5` | `20..23` | **ID/EX** | `o_pc_plus_4` (`[31:0]`) |
+| `6` | `24..27` | **ID/EX** | `o_rs1_data` (`[31:0]`) |
+| `7` | `28..31` | **ID/EX** | `o_rs2_data` (`[31:0]`) |
+| `8` | `32..35` | **ID/EX** | `o_imm` (`[31:0]`) |
+| `9` | `36..39` | **ID/EX** | `[4:0]=rs1`, `[9:5]=rs2`, `[14:10]=rd`, `[17:15]=funct3`, `[18]=funct7_5`, `[21:19]=alu_op`, `[22]=alu_src`, `[23]=mem_read`, `[24]=mem_write`, `[25]=reg_write`, `[26]=mem_to_reg`, `[27]=wb_jump`, `[28]=valid`, `[31:29]=0` |
+| `10` | `40..43` | **EX/MEM** | `o_alu_result` (`[31:0]`) |
+| `11` | `44..47` | **EX/MEM** | `o_rs2_data` (`[31:0]`) |
+| `12` | `48..51` | **EX/MEM** | `o_pc_plus_4` (`[31:0]`) |
+| `13` | `52..55` | **EX/MEM** | `[4:0]=rd`, `[7:5]=funct3`, `[8]=mem_read`, `[9]=mem_write`, `[10]=reg_write`, `[11]=mem_to_reg`, `[12]=wb_jump`, `[13]=valid`, `[31:14]=0` |
+| `14` | `56..59` | **MEM/WB** | `o_read_data` (`[31:0]`) |
+| `15` | `60..63` | **MEM/WB** | `o_alu_result` (`[31:0]`) |
+| `16` | `64..67` | **MEM/WB** | `o_pc_plus_4` (`[31:0]`) |
+| `17` | `68..71` | **MEM/WB** | `[4:0]=rd`, `[5]=reg_write`, `[6]=mem_to_reg`, `[7]=wb_jump`, `[8]=valid`, `[31:9]=0` |
 
 ---
 
@@ -98,65 +90,14 @@ que no puedan desincronizarse.
 |------|--------|-------------|
 | `0xA5` | `ACK` | Comando aceptado y completado |
 | `0x5A` | `NAK` | Comando desconocido, o inválido en el estado actual |
-| `0xF1` | `HALTED` | El programa terminó **y el pipeline quedó vacío** |
-
-Los valores `0xA5` y `0x5A` se eligieron por ser complementarios bit a bit:
-un cable ruidoso o un baud rate mal configurado difícilmente convierta uno en
-el otro sin que se note.
+| `0xF1` | `HALTED` | El programa terminó (`ebreak`) **y el pipeline quedó vacío** |
 
 ### Byte de STATUS (`0x24`)
 
 | Bit | Nombre | Significado |
 |-----|--------|-------------|
 | 0 | `running` | El core está ejecutando en modo continuo |
-| 1 | `halted` | Se detectó HALT y el pipeline está drenado |
-| 2 | `draining` | Se detectó HALT pero todavía quedan instrucciones adentro |
-| 3 | `prog_loaded` | Hay un programa cargado en la memoria de instrucciones |
-| 4–7 | reservados | En 0 |
-
-El bit `draining` es el que evita el bug más común de este proyecto: pedir el
-dump apenas se detecta el HALT y leer registros viejos.
-
----
-
-## 6. Secuencias típicas
-
-**Cargar y correr un programa**
-
-```
-PC  -> 0x01                          RESET
-FPGA-> 0xA5                          ACK
-PC  -> 0x02  05 00  <20 bytes>       LOAD_PROG, 5 instrucciones
-FPGA-> 0xA5                          ACK
-PC  -> 0x10                          RUN
-FPGA-> 0xA5                          ACK  (arranqué)
-        ... el core ejecuta ...
-FPGA-> 0xF1                          HALTED (pipeline vacío)
-PC  -> 0x20                          DUMP_REGS
-FPGA-> <128 bytes>
-```
-
-**Modo paso a paso**
-
-```
-PC  -> 0x11        STEP
-FPGA-> 0xA5        ACK
-PC  -> 0x23        DUMP_PC       -> 4 B
-PC  -> 0x21        DUMP_LATCHES  -> N B
-PC  -> 0x20        DUMP_REGS     -> 128 B
-        ... repetir ...
-```
-
-Si esto resulta lento en la práctica, la optimización obvia es un comando
-`STEP_AND_DUMP` que devuelva todo junto. **No lo implementen todavía**: primero
-que funcione, después que sea rápido.
-
----
-
-## 7. Preguntas abiertas
-
-- [ ] ¿`RUN` debería mandar el dump completo solo, sin que se lo pidan?
-- [ ] ¿Hace falta un comando para leer/escribir un registro puntual (útil para
-      breakpoints, no exigido por la consigna)?
-- [ ] ¿Checksum al final de cada dump? Encarece la FSM; decidir después de ver
-      si aparece corrupción real a 115200.
+| 1 | `halted` | Se detectó `ebreak` y los 4 latches del pipeline están vacíos |
+| 2 | `draining` | Se detectó `ebreak` pero aún quedan instrucciones previas drenando |
+| 3 | `prog_loaded` | Hay un programa cargado dinámicamente en `InstructionMemory` |
+| 4–7 | reservados | En `0` |
