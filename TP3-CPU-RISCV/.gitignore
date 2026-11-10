@@ -10,6 +10,9 @@ build/
 *.bit
 *.ltx
 *.dcp
+*.pb
+*.wdb
+xsim.dir/
 .Xil/
 *.cache/
 *.hw/
@@ -39,3 +42,7 @@ venv/
 .vscode/settings.json
 .DS_Store
 Thumbs.db
+
+# ---- Archivos Estudio ----
+docs/resumen_1_guia_general_riscv.md
+docs/resumen_2_modulo_por_modulo_rtl.md
