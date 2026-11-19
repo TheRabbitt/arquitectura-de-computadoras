@@ -1,28 +1,36 @@
 # ==============================================================================
-# Programa 3: Sumatoria en Bucle con Saltos Condicionales y Llamada a Subrutina
+# Programa 3: Sumatoria en Bucle y Llamada a Subrutina (Convención ABI RISC-V)
 # ==============================================================================
-# Calcula la suma 1 + 2 + 3 + 4 = 10 usando un bucle con BNE, guarda cada
-# resultado parcial en la Memoria de Datos, invoca una subrutina con JAL/JALR
-# que duplica el resultado final (20) y detiene el procesador con EBREAK.
+# Respeta estrictamente la convención de llamada ABI de RISC-V:
+#   - x5  (t0) : Registro temporal para el contador del bucle (i = 1..4).
+#   - x6  (t1) : Registro temporal para el límite del bucle (N = 5).
+#   - x8  (s0) : Registro preservado (Saved) para el puntero de memoria (0, 4, 8, 12, 16),
+#                ya que su valor debe conservarse intacto tras llamar a la subrutina.
+#   - x10 (a0) : Registro de argumento y retorno de función (acumula 1+2+3+4 = 10,
+#                entra como parámetro a `sub_duplicar` y vuelve con el retorno = 20).
+#   - x1  (ra) : Return Address (guarda PC+4 en JAL y se usa en JALR para retornar).
 # ==============================================================================
 
-    addi x1, x0, 1          # x1 = contador i = 1
-    addi x2, x0, 5          # x2 = límite N = 5 (itera para i = 1, 2, 3, 4)
-    addi x3, x0, 0          # x3 = acumulador suma = 0
-    addi x4, x0, 0          # x4 = puntero de byte a Memoria de Datos (0, 4, 8, 12)
+    addi x5, x0, 1          # x5  (t0) = contador temporal i = 1
+    addi x6, x0, 5          # x6  (t1) = límite temporal N = 5 (itera para i = 1, 2, 3, 4)
+    addi x10, x0, 0         # x10 (a0) = argumento/acumulador suma = 0
+    addi x8, x0, 0          # x8  (s0) = puntero preservado a Memoria de Datos (dir 0x00)
 
 bucle_suma:
-    add  x3, x3, x1         # suma += i
-    sw   x3, 0(x4)          # DMEM[x4/4] = suma parcial (1, 3, 6, 10)
-    addi x4, x4, 4          # avanza puntero de memoria (+4 bytes)
-    addi x1, x1, 1          # i++
-    bne  x1, x2, bucle_suma # si i != 5, repite el bucle
+    add  x10, x10, x5       # x10 += i (1, 3, 6, 10)
+    sw   x10, 0(x8)         # DMEM[x8/4] = suma parcial
+    addi x8, x8, 4          # avanza puntero preservado (+4 bytes)
+    addi x5, x5, 1          # i++
+    bne  x5, x6, bucle_suma # si i != 5, repite el bucle
 
-    # Llamada a subrutina para duplicar el acumulador (x3 = 10 -> x10 = 20)
-    jal  ra, sub_duplicar   # guarda dirección de retorno en ra (x1) y salta
-    sw   x10, 16(x0)        # DMEM[4] (dir 0x10) = 20 (0x00000014)
+    # Llamada a función bajo convención ABI:
+    # - Argumento de entrada en x10 (a0) = 10
+    # - Dirección de retorno en x1  (ra) = PC + 4 (0x0028)
+    # - Resultado de retorno en x10 (a0) = 20
+    jal  x1, sub_duplicar   # llama a sub_duplicar(x10), guarda retorno en x1 (ra)
+    sw   x10, 0(x8)         # guarda valor retornado x10 (20) usando x8 preservado (DMEM[4])
     ebreak                  # Fin del programa -> Drena pipeline y envía HALTED (0xF1)
 
 sub_duplicar:
-    slli x10, x3, 1         # x10 = x3 << 1 = 20
-    jalr x0, 0(ra)          # retorna al llamador
+    slli x10, x10, 1        # x10 = x10 << 1 = 20 (duplica el argumento y lo deja en x10)
+    jalr x0, 0(x1)          # retorna al llamador usando x1 (ra)
