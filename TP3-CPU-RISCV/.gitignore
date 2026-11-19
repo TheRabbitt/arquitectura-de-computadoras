@@ -44,5 +44,5 @@ venv/
 Thumbs.db
 
 # ---- Archivos Estudio ----
-docs/resumen_1_guia_general_riscv.md
-docs/resumen_2_modulo_por_modulo_rtl.md
+docs/
+
