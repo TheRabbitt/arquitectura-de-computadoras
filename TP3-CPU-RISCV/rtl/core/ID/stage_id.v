@@ -48,6 +48,8 @@ module id_stage (
     output wire        o_if_id_write,
     output wire        o_pc_src,
     output wire [31:0] o_branch_target,
+    output wire        o_halt,
+    output wire        o_ctrl_mux_sel,
 
     // -------------------------------------------------------------------------
     // Salidas de Control para el Latch ID/EX (Filtradas por MUX de Stall)
@@ -88,10 +90,12 @@ module id_stage (
     // Control salidas puras de Control Unit
     wire       ctrl_branch, ctrl_jump, ctrl_mem_read, ctrl_mem_to_reg;
     wire       ctrl_mem_write, ctrl_alu_src, ctrl_reg_write, ctrl_jalr;
+    wire       ctrl_halt;
     wire [2:0] ctrl_alu_op;
 
-    wire       ctrl_mux_sel; // Control de Stall
+    wire       ctrl_mux_sel; // Control de Stall (1 = normal, 0 = burbuja)
     wire       take_branch;
+    wire       is_halt;
 
     // Cables de datos con posible adelantamiento (Forwarding)
     wire [1:0]  forward_a_id;
@@ -113,21 +117,28 @@ module id_stage (
     // Unidad de Control Principal
     // -------------------------------------------------------------------------
     control_unit ctrl (
-        .i_opcode(i_instruction[6:0]),
-        .o_branch(ctrl_branch),
-        .o_jump(ctrl_jump),
-        .o_jalr(ctrl_jalr),
-        .o_mem_read(ctrl_mem_read),
-        .o_mem_to_reg(ctrl_mem_to_reg),
-        .o_alu_op(ctrl_alu_op),
-        .o_mem_write(ctrl_mem_write),
-        .o_alu_src(ctrl_alu_src),
-        .o_reg_write(ctrl_reg_write)
+        .i_opcode     (i_instruction[6:0]),
+        .o_branch     (ctrl_branch),
+        .o_jump       (ctrl_jump),
+        .o_jalr       (ctrl_jalr),
+        .o_mem_read   (ctrl_mem_read),
+        .o_mem_to_reg (ctrl_mem_to_reg),
+        .o_alu_op     (ctrl_alu_op),
+        .o_mem_write  (ctrl_mem_write),
+        .o_alu_src    (ctrl_alu_src),
+        .o_reg_write  (ctrl_reg_write),
+        .o_halt       (ctrl_halt)
     );
+
+    // Decodificación exacta de EBREAK (0x00100073 -> imm12=0x001, rs1=0, funct3=0, rd=0, opcode=1110011)
+    assign is_halt = ctrl_halt & (i_instruction[31:7] == 25'h002000);
+    assign o_halt  = is_halt;
 
     // -------------------------------------------------------------------------
     // Unidad de Detección de Riesgos (Hazard Detection Unit)
     // -------------------------------------------------------------------------
+    // Nota: EBREAK tiene el bit 20 en 1 (if_id_rs2 = 5'd1), pero no lee registros;
+    // se enmascaran rs1/rs2 en HALT para evitar falsos stalls Load-Use sobre x1.
     hazard_detection_unit hdu (
         .id_ex_mem_read  (i_id_ex_mem_read),
         .id_ex_reg_write (i_id_ex_reg_write),
@@ -137,12 +148,14 @@ module id_stage (
         .ex_mem_rd       (i_ex_mem_rd),
         .if_id_branch    (ctrl_branch),
         .if_id_jalr      (ctrl_jalr),
-        .if_id_rs1       (rs1_addr),
-        .if_id_rs2       (rs2_addr),
+        .if_id_rs1       (is_halt ? 5'd0 : rs1_addr),
+        .if_id_rs2       (is_halt ? 5'd0 : rs2_addr),
         .pc_write        (o_pc_write),
         .if_id_write     (o_if_id_write),
         .ctrl_mux_sel    (ctrl_mux_sel)
     );
+
+    assign o_ctrl_mux_sel = ctrl_mux_sel;
 
     // -------------------------------------------------------------------------
     // Multiplexor de Control de Burbujas (Stall Mux)

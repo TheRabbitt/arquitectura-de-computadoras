@@ -32,11 +32,14 @@ module tb_pipeline;
     wire        id_if_id_write;
     wire        id_pc_src;
     wire [31:0] id_branch_target;
+    wire        id_halt;
+    wire        id_ctrl_mux_sel;
     
     // IF/ID -> ID
     wire [31:0] if_id_pc;
     wire [31:0] if_id_pc_plus_4;
     wire [31:0] if_id_instr;
+    wire        if_id_valid;
 
     // WB -> ID (Retroalimentación al Banco de Registros)
     wire [31:0] wb_write_data;
@@ -62,6 +65,7 @@ module tb_pipeline;
     wire [2:0]  id_ex_funct3;
     wire        id_ex_funct7_5;
     wire        id_ex_wb_jump;
+    wire        id_ex_valid;
 
     // EX -> EX/MEM
     wire [31:0] ex_alu_result, ex_rs2_data, ex_pc_plus_4;
@@ -74,6 +78,7 @@ module tb_pipeline;
     wire [31:0] ex_mem_alu_result, ex_mem_rs2_data, ex_mem_pc_plus_4;
     wire [4:0]  ex_mem_rd;
     wire [2:0]  ex_mem_funct3;
+    wire        ex_mem_valid;
 
     // MEM -> MEM/WB
     wire        mem_wb_reg_write_out, mem_wb_mem_to_reg_out, mem_wb_jump;
@@ -88,6 +93,7 @@ module tb_pipeline;
     wire [31:0] wb_alu_result_final;
     wire [31:0] wb_pc_plus_4_final;
     wire [4:0]  wb_rd_final;
+    wire        mem_wb_valid;
 
     // =========================================================================
     // Instanciación de Etapas y Registros
@@ -95,7 +101,7 @@ module tb_pipeline;
 
     stage_if u_stage_if (
         .i_clk(clk), .i_rst(rst), .i_en(enable),
-        .i_stall(~id_pc_write), .i_halt(1'b0),
+        .i_stall(~id_pc_write), .i_halt(id_halt),
         .i_branch_sel(id_pc_src), .i_branch_target(id_branch_target),
         .i_mem_we(1'b0), .i_debug_re(1'b0), .i_debug_addr(10'b0), 
         .i_write_addr(10'b0), .i_write_data(32'b0),
@@ -104,8 +110,9 @@ module tb_pipeline;
 
     if_id_register u_if_id (
         .i_clk(clk), .i_rst(rst), .i_en(id_if_id_write),
-        .i_flush(id_pc_src), .i_pc(if_pc), .i_pc_plus_4(if_pc_plus_4), .i_instruction(if_instr),
-        .o_pc(if_id_pc), .o_pc_plus_4(if_id_pc_plus_4), .o_instruction(if_id_instr)
+        .i_flush(id_pc_src | if_halted), .i_pc(if_pc), .i_pc_plus_4(if_pc_plus_4), .i_instruction(if_instr),
+        .o_pc(if_id_pc), .o_pc_plus_4(if_id_pc_plus_4), .o_instruction(if_id_instr),
+        .o_valid(if_id_valid), .o_debug_if_id()
     );
 
     id_stage u_stage_id (
@@ -117,6 +124,7 @@ module tb_pipeline;
         .i_ex_mem_wb_jump(ex_mem_wb_jump), .i_ex_mem_rd(ex_mem_rd),
         .i_ex_mem_alu_result(ex_mem_alu_result), .i_ex_mem_pc_plus_4(ex_mem_pc_plus_4),
         .o_pc_write(id_pc_write), .o_if_id_write(id_if_id_write), .o_pc_src(id_pc_src), .o_branch_target(id_branch_target),
+        .o_halt(id_halt), .o_ctrl_mux_sel(id_ctrl_mux_sel),
         .o_wb_reg_write(id_wb_reg_write), .o_wb_mem_to_reg(id_wb_mem_to_reg),
         .o_m_mem_read(id_m_mem_read), .o_m_mem_write(id_m_mem_write),
         .o_ex_alu_src(id_ex_alu_src), .o_ex_alu_op(id_ex_alu_op),
@@ -127,7 +135,7 @@ module tb_pipeline;
     );
 
     id_ex_register u_id_ex (
-        .i_clk(clk), .i_rst(rst), .i_en(enable),
+        .i_clk(clk), .i_rst(rst), .i_en(enable), .i_valid(if_id_valid & id_ctrl_mux_sel & ~id_halt),
         .i_wb_reg_write(id_wb_reg_write), .i_wb_mem_to_reg(id_wb_mem_to_reg),
         .i_m_mem_read(id_m_mem_read), .i_m_mem_write(id_m_mem_write),
         .i_ex_alu_src(id_ex_alu_src), .i_ex_alu_op(id_ex_alu_op),
@@ -136,11 +144,11 @@ module tb_pipeline;
         .i_funct3(id_funct3), .i_funct7_5(id_funct7_5), .i_wb_jump(id_wb_jump),
         .o_wb_reg_write(id_ex_wb_reg_write), .o_wb_mem_to_reg(id_ex_wb_mem_to_reg),
         .o_m_mem_read(id_ex_m_mem_read), .o_m_mem_write(id_ex_m_mem_write),
-        .o_ex_alu_src(id_ex_ex_alu_src), .o_ex_alu_op(id_ex_ex_alu_op),
+        .o_ex_alu_src(id_ex_ex_alu_src), .o_ex_alu_op(id_ex_ex_alu_op), .o_valid(id_ex_valid),
         .o_pc(id_ex_pc), .o_pc_plus_4(id_ex_pc_plus_4), .o_rs1_data(id_ex_rs1_data), .o_rs2_data(id_ex_rs2_data), .o_imm(id_ex_imm),
         .o_rs1(id_ex_rs1), .o_rs2(id_ex_rs2), .o_rd(id_ex_rd),
-        .o_funct3(id_ex_funct3), .o_funct7_5(id_ex_funct7_5), .o_wb_jump(id_ex_wb_jump)
-        // .o_debug_id_ex()
+        .o_funct3(id_ex_funct3), .o_funct7_5(id_ex_funct7_5), .o_wb_jump(id_ex_wb_jump),
+        .o_debug_id_ex()
     );
 
     stage_ex u_stage_ex (
@@ -155,14 +163,14 @@ module tb_pipeline;
     );
 
     ex_mem_latch u_ex_mem (
-        .clk(clk), .rst(rst), .i_enable(enable),
-        .i_wb_regwrite(id_ex_wb_reg_write), .i_wb_memtoreg(id_ex_wb_mem_to_reg), .i_wb_jump(id_ex_wb_jump),
+        .clk(clk), .rst(rst), .i_enable(enable), .i_valid(id_ex_valid),
+        .i_wb_regwrite(id_ex_wb_reg_write), .i_wb_memtoreg(id_ex_wb_mem_to_reg), .i_wb_jump(ex_wb_jump),
         .i_m_memread(id_ex_m_mem_read), .i_m_memwrite(id_ex_m_mem_write),
-        .i_alu_result(ex_alu_result), .i_rs2_data(ex_rs2_data), .i_rd(id_ex_rd), .i_funct3(ex_funct3), .i_pc_plus_4(id_ex_pc_plus_4),
+        .i_alu_result(ex_alu_result), .i_rs2_data(ex_rs2_data), .i_rd(id_ex_rd), .i_funct3(ex_funct3), .i_pc_plus_4(ex_pc_plus_4),
         .o_wb_regwrite(ex_mem_wb_reg_write), .o_wb_memtoreg(ex_mem_wb_mem_to_reg),
-        .o_m_memread(ex_mem_m_mem_read), .o_m_memwrite(ex_mem_m_mem_write),
+        .o_m_memread(ex_mem_m_mem_read), .o_m_memwrite(ex_mem_m_mem_write), .o_valid(ex_mem_valid),
         .o_alu_result(ex_mem_alu_result), .o_rs2_data(ex_mem_rs2_data), .o_rd(ex_mem_rd), .o_funct3(ex_mem_funct3),
-        .o_wb_jump(ex_mem_wb_jump), .o_pc_plus_4(ex_mem_pc_plus_4)
+        .o_wb_jump(ex_mem_wb_jump), .o_pc_plus_4(ex_mem_pc_plus_4), .o_debug_ex_mem()
     );
 
     stage_mem u_stage_mem (
@@ -176,14 +184,13 @@ module tb_pipeline;
     );
 
     mem_wb_latch u_mem_wb (
-        .i_clk(clk), .i_rst(rst), .i_enable(enable),
+        .i_clk(clk), .i_rst(rst), .i_enable(enable), .i_valid(ex_mem_valid),
         .i_wb_reg_write(mem_wb_reg_write_out), .i_wb_mem_to_reg(mem_wb_mem_to_reg_out), .i_wb_jump(mem_wb_jump),
         .i_read_data(mem_read_data), .i_alu_result(mem_alu_result), .i_rd(mem_rd), .i_pc_plus_4(mem_pc_plus_4),
-        .o_wb_reg_write(wb_reg_write_final), .o_wb_mem_to_reg(wb_mem_to_reg_final), .o_wb_jump(wb_jump_final),
-        .o_read_data(wb_read_data_final), .o_alu_result(wb_alu_result_final), .o_rd(wb_rd_final), .o_pc_plus_4(wb_pc_plus_4_final)
+        .o_wb_reg_write(wb_reg_write_final), .o_wb_mem_to_reg(wb_mem_to_reg_final), .o_wb_jump(wb_jump_final), .o_valid(mem_wb_valid),
+        .o_read_data(wb_read_data_final), .o_alu_result(wb_alu_result_final), .o_rd(wb_rd_final), .o_pc_plus_4(wb_pc_plus_4_final),
+        .o_debug_mem_wb()
     );
-
-    // assign wb_write_data = (wb_mem_to_reg_final) ? wb_read_data_final : wb_alu_result_final;
 
     stage_wb u_stage_wb (
         .i_mem_to_reg(wb_mem_to_reg_final), .i_jump(wb_jump_final),

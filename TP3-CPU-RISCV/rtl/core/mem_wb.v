@@ -5,7 +5,8 @@
 // Módulo: mem_wb
 // Descripción: Latch/Registro de Pipeline entre las etapas MEM (Memory)
 //              y WB (Write-Back) para un procesador RISC-V de 5 etapas.
-//              Incluye bus de depuración (o_debug_mem_wb) y señal de enable.
+//              Incluye bus de depuración (o_debug_mem_wb), bit de validez
+//              y señal de enable.
 //==============================================================================
 
 module mem_wb_latch (
@@ -16,6 +17,7 @@ module mem_wb_latch (
     // i_enable = 1: El pipeline avanza normalmente.
     // i_enable = 0: El latch congela su estado (Pausa para la UART).
     input  wire        i_enable,
+    input  wire        i_valid,
 
     // -------------------------------------------------------------------------
     // Entradas desde la etapa MEM (y latch EX/MEM)
@@ -37,19 +39,19 @@ module mem_wb_latch (
     // Grupo WB (Write-Back)
     output reg         o_wb_reg_write,
     output reg         o_wb_mem_to_reg,
-    output reg         o_wb_jump,          
+    output reg         o_wb_jump,
+    output reg         o_valid,
 
     // Datapath
     output reg  [31:0] o_read_data,
     output reg  [31:0] o_alu_result,
     output reg  [4:0]  o_rd,
-    output reg  [31:0] o_pc_plus_4
+    output reg  [31:0] o_pc_plus_4,
 
     // -------------------------------------------------------------------------
-    // Puerto de Depuración (Debug Unit / UART)
+    // Puerto de Depuración (Debug Unit / UART): 4 palabras de 32 bits = 16 bytes
     // -------------------------------------------------------------------------
-    // Suma de bits: 1 + 1 + 32 + 32 + 5 = 71 bits
-    // output wire [70:0] o_debug_mem_wb
+    output wire [127:0] o_debug_mem_wb
 );
 
     // -------------------------------------------------------------------------
@@ -61,6 +63,7 @@ module mem_wb_latch (
             o_wb_reg_write  <= 1'b0;
             o_wb_mem_to_reg <= 1'b0;
             o_wb_jump       <= 1'b0;
+            o_valid         <= 1'b0;
     
             o_read_data     <= 32'b0;
             o_alu_result    <= 32'b0;
@@ -72,6 +75,7 @@ module mem_wb_latch (
             o_wb_reg_write  <= i_wb_reg_write;
             o_wb_mem_to_reg <= i_wb_mem_to_reg;
             o_wb_jump       <= i_wb_jump;
+            o_valid         <= i_valid;
             o_read_data     <= i_read_data;
             o_alu_result    <= i_alu_result;
             o_rd            <= i_rd;
@@ -81,16 +85,27 @@ module mem_wb_latch (
     end
 
     // -------------------------------------------------------------------------
-    // Empaquetado de Datos para transmisión UART / Debug Unit
-    // Unifica los 71 bits del latch para que la Debug Unit los serialice.
+    // Empaquetado alineado a palabras de 32 bits (4 palabras = 16 bytes):
+    // Word 0 [31:0]   : o_read_data
+    // Word 1 [63:32]  : o_alu_result
+    // Word 2 [95:64]  : o_pc_plus_4
+    // Word 3 [127:96] : {23'd0, o_valid, o_wb_jump, o_wb_mem_to_reg, o_wb_reg_write, o_rd}
     // -------------------------------------------------------------------------
-    // assign o_debug_mem_wb = {
-    //     o_wb_reg_write,  // [70]    (1 bit)
-    //     o_wb_mem_to_reg, // [69]    (1 bit)
-    //     o_read_data,     // [68:37] (32 bits)
-    //     o_alu_result,    // [36:5]  (32 bits)
-    //     o_rd             // [4:0]   (5 bits)
-    // };
+    wire [31:0] w_ctrl_word = {
+        23'd0,
+        o_valid,         // [8]
+        o_wb_jump,       // [7]
+        o_wb_mem_to_reg, // [6]
+        o_wb_reg_write,  // [5]
+        o_rd             // [4:0]
+    };
+
+    assign o_debug_mem_wb = {
+        w_ctrl_word,
+        o_pc_plus_4,
+        o_alu_result,
+        o_read_data
+    };
 
 endmodule
 `default_nettype wire
