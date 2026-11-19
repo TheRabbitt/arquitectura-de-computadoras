@@ -19,10 +19,11 @@ Uso:
 from __future__ import annotations
 
 import argparse
+import random
 import struct
 import sys
 import tkinter as tk
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Dict, List, Optional, Tuple
@@ -71,12 +72,12 @@ class GameState:
     max_energy: int = 20
     score: int = 0
 
-    hp_monster: int = 36
-    max_hp_monster: int = 36
-    defense: int = 6
+    hp_monster: int = 75
+    max_hp_monster: int = 75
+    defense: int = 8
     flags: int = 0x02  # bit0=Furia, bit1=Escudo, bit2=Herido
 
-    seed: int = 0x00000026
+    seed: int = field(default_factory=lambda: random.SystemRandom().randint(1, 0x7FFFFFFF))
     turn: int = 1
     result: int = RESULT_ONGOING
 
@@ -175,8 +176,8 @@ def build_turn_asm(state: GameState, action: int) -> str:
     addi x5,  x0, 2
     srl  x12, x11, x5           # x12 = Energia >> 2 (bonus energía)
     addi x6,  x0, 1
-    andi x7,  x9,  3            # turno mod 4 (evita overflow del shift)
-    sll  x13, x6,  x7           # x13 = 1 << (turno & 3) (bonus de combo)
+    andi x7,  x9,  1            # turno mod 2 (bonus de combo balanceado: +1 o +2)
+    sll  x13, x6,  x7           # x13 = 1 << (turno & 1)
     add  x14, x10, x12          # x14 = dado + bonus_energia
     add  x14, x14, x13          # x14 = ataque bruto
 
@@ -202,8 +203,8 @@ energia_cero:
 energia_lista:
     sb   x11, 1(x0)             # guarda nueva Energía en DMEM[0][15:8]
 
-    # Comprobar Golpe Crítico (dado >= 6)
-    sltiu x5, x10, 6            # x5 = 1 si dado < 6
+    # Comprobar Golpe Crítico (dado >= 7 -> 25% de probabilidad)
+    sltiu x5, x10, 7            # x5 = 1 si dado < 7
     bne  x5,  x0, sin_critico
     slli x14, x14, 1            # ¡CRÍTICO! duplica ataque
     ori  x19, x19, 1            # evento bit 0 = Crítico
@@ -253,7 +254,7 @@ guardar_flags:
     # --- ACCIÓN 2: CURAR / RECARGAR ---
 accion_curar:
     lb   x7,  0(x0)             # HP_Heroe (signed byte)
-    addi x7,  x7,  8            # +8 HP
+    addi x7,  x7,  10           # +10 HP
     slti x5,  x7,  31           # tope máximo 30
     bne  x5,  x0, hp_ok
     addi x7,  x0,  30
@@ -270,20 +271,20 @@ eng_ok:
 
     # 4. Contraataque del Monstruo (aritmética con signo: srai y sra)
 contraataque:
-    # Base del contraataque: -16 (si Furia activa -> -20)
+    # Base del contraataque: -24 (normal -> -6 HP) o -40 (en Furia -> -10 HP)
     lbu  x29, 7(x0)
     andi x6,  x29, 1
-    addi x5,  x0, -16
+    addi x5,  x0, -24
     beq  x6,  x0, sin_furia
-    addi x5,  x0, -24           # en Furia pega más fuerte!
+    addi x5,  x0, -40           # en Furia pega mucho más fuerte (-10 HP)!
 sin_furia:
-    srai x5,  x5, 1             # -16 >> 1 = -8  (o -24 >> 1 = -12)
+    srai x5,  x5, 1             # -24 >> 1 = -12 (o -40 >> 1 = -20)
     addi x6,  x0, 1             # mitigación base = 1
     addi x7,  x0, 2
     bne  x18, x7, aplicar_sra
-    addi x6,  x0, 2             # si el Héroe se curó/defendió, mitiga más (>> 2)
+    addi x6,  x0, 2             # si el Héroe se curó/defendió, mitiga a la mitad (>> 2)
 aplicar_sra:
-    sra  x5,  x5, x6            # daño negativo final (ej. -4, -6 o -2)
+    sra  x5,  x5, x6            # daño negativo final (-6/-10 normal, -3/-5 mitigado)
 
     lb   x7,  0(x0)             # HP_Heroe actual (con signo)
     add  x7,  x7, x5            # HP_Heroe += daño_negativo
@@ -335,9 +336,11 @@ fin_turno:
     # --------------------------------------------------------------------------
 tirar_dado:
     lw   x5,  8(x0)
-    slli x6,  x5, 3
+    slli x6,  x5, 13
     xor  x5,  x5, x6
-    srli x6,  x5, 2
+    srli x6,  x5, 17
+    xor  x5,  x5, x6
+    slli x6,  x5, 5
     xor  x5,  x5, x6
     sw   x5,  8(x0)
     andi x10, x5, 7
@@ -510,6 +513,7 @@ class DungeonRPGApp:
 
         self.client = DebugUnitClient()
         self.use_fpga = False
+        self.is_busy = False
         self.state = GameState()
         self.anim_effect: Optional[str] = None
         self.anim_banner: str = "¡Elegí tu acción para comenzar el duelo!"
@@ -667,7 +671,7 @@ class DungeonRPGApp:
 
         self.btn_heal = tk.Button(
             actions,
-            text="🛡️  CURAR / DEFENDER\n(+8 HP | +6 Energía | Mitiga)",
+            text="🛡️  CURAR / DEFENDER\n(+10 HP | +6 Energía | Mitiga 50%)",
             command=lambda: self._play_turn(ACTION_HEAL),
             bg="#15803D",
             fg="white",
@@ -807,16 +811,48 @@ class DungeonRPGApp:
             self.use_fpga = True
             self.btn_connect.config(text="Desconectar", bg="#DC2626")
             self.mode_badge.config(text=f" ● FPGA ({port}) ", fg=ACCENT_GREEN)
-            self._append_log(f"[UART] Conectado a la FPGA en {port} @ {DEFAULT_BAUDRATE} bps.")
+            if self.client.resync():
+                self._append_log(f"[UART] Conectado y sincronizado con la FPGA en {port} @ {DEFAULT_BAUDRATE} bps.")
+            else:
+                self._append_log(
+                    f"[AVISO] Puerto {port} abierto pero la FPGA no respondió al RESET. "
+                    "Presioná el botón central BTNC en la placa Nexys 4 si estaba trabada."
+                )
         except ProtocolError as exc:
             self.use_fpga = False
             messagebox.showerror("Error UART", str(exc))
+
+    def _run_turn_on_fpga(self, words: List[int]) -> Tuple[List[int], List[int]]:
+        """Ejecuta LOAD_PROG + RUN + DUMP_DMEM + DUMP_REGS con reintento automático."""
+        last_exc: Optional[Exception] = None
+        for attempt in range(2):
+            try:
+                # CMD_LOAD_PROG ya resetea el core y borra DMEM automáticamente en la FPGA
+                self.client.load_program(words)
+                self.client.run(run_timeout=5.0)
+                dmem_entries = self.client.dump_dmem(offset_word=0, count_words=6)
+                dmem_words = [e.data for e in dmem_entries]
+                regs = self.client.dump_regs()
+                return regs, dmem_words
+            except ProtocolError as exc:
+                last_exc = exc
+                if attempt == 0:
+                    self._append_log("[UART] Timeout detectado, intentando resincronizar Debug Unit...")
+                    self.root.update_idletasks()
+                    if self.client.resync():
+                        continue
+                break
+        raise ProtocolError(
+            f"{last_exc}\n\n"
+            "Si la Debug Unit quedó esperando bytes de una trama anterior, "
+            "presioná una vez el botón físico central BTNC (Reset) en la placa Nexys 4 y reintentá."
+        )
 
     # ------------------------------------------------------------------
     # Ejecución de un Turno en el Procesador RISC-V
     # ------------------------------------------------------------------
     def _play_turn(self, action: int) -> None:
-        if self.state.result != RESULT_ONGOING:
+        if self.is_busy or self.state.result != RESULT_ONGOING:
             return
 
         asm_src = build_turn_asm(self.state, action)
@@ -829,19 +865,24 @@ class DungeonRPGApp:
         words = [inst.word for inst in program]
         self.state.last_asm_words = len(words)
 
+        self.is_busy = True
+        self.btn_attack.config(state=tk.DISABLED)
+        self.btn_power.config(state=tk.DISABLED)
+        self.btn_heal.config(state=tk.DISABLED)
+        self.root.update_idletasks()
+
         try:
             if self.use_fpga:
-                self.client.reset()
-                self.client.load_program(words)
-                self.client.run(run_timeout=5.0)
-                dmem_entries = self.client.dump_dmem(offset_word=0, count_words=6)
-                dmem_words = [e.data for e in dmem_entries]
-                regs = self.client.dump_regs()
+                regs, dmem_words = self._run_turn_on_fpga(words)
             else:
                 regs, dmem_words = simulate_rv32i(words)
         except Exception as exc:
+            self._append_log(f"[ERROR UART] {exc}")
             messagebox.showerror("Error ejecutando en RISC-V", str(exc))
+            self._render_all()
             return
+        finally:
+            self.is_busy = False
 
         # Desempaquetar estado resultante leído directamente desde DMEM[0..5]
         w0, w1, w2, w3, w4, w5 = dmem_words
@@ -873,8 +914,8 @@ class DungeonRPGApp:
 
         if healed:
             self.anim_effect = "heal"
-            msg = f"Turno {self.state.turn}: 🛡️ Curación (+8 HP, +6 EN). Contraataque mitigado: -{self.state.last_counter} HP."
-            self.anim_banner = f"🛡️ ¡CURACIÓN! (+8 HP / +6 EN)  |  Monstruo pega -{self.state.last_counter}"
+            msg = f"Turno {self.state.turn}: 🛡️ Curación (+10 HP, +6 EN). Contraataque mitigado: -{self.state.last_counter} HP."
+            self.anim_banner = f"🛡️ ¡CURACIÓN! (+10 HP / +6 EN)  |  Escudo levantado..."
             self.anim_banner_color = ACCENT_GREEN
         else:
             tags = []
@@ -904,9 +945,6 @@ class DungeonRPGApp:
             self.anim_banner_color = ACCENT_GREEN
             msg += "  >>> ¡VICTORIA (0xCAFE0001)!"
         elif self.state.result == RESULT_DEFEAT:
-            self.anim_effect = "defeat"
-            self.anim_banner = "💀 DERROTA — Firma RISC-V: 0xDEAD0000"
-            self.anim_banner_color = ACCENT_RED
             msg += "  >>> DERROTA (0xDEAD0000)"
         else:
             self.state.turn += 1
@@ -914,9 +952,38 @@ class DungeonRPGApp:
         self._append_log(msg)
         self._render_all()
 
-        # Quitar el flash de ataque luego de 650 ms para dejar la escena limpia
-        if self.state.result == RESULT_ONGOING:
+        # Animación en 2 fases: primero acción del Héroe (550 ms), luego llamarada del Dragón (650 ms)
+        if self.state.last_counter > 0 and self.state.result != RESULT_VICTORY:
+            self.is_busy = True
+            self.btn_attack.config(state=tk.DISABLED)
+            self.btn_power.config(state=tk.DISABLED)
+            self.btn_heal.config(state=tk.DISABLED)
+            self.root.after(550, lambda h=healed: self._play_dragon_counter_anim(h))
+        elif self.state.result == RESULT_ONGOING:
             self.root.after(650, self._clear_flash)
+
+    def _play_dragon_counter_anim(self, was_healed: bool) -> None:
+        self.anim_effect = "dragon_attack"
+        if self.state.result == RESULT_DEFEAT:
+            self.anim_banner = f"🔥 ¡EL DRAGÓN TE DERRIBÓ (-{self.state.last_counter} HP)! 💀 DERROTA (0xDEAD0000)"
+            self.anim_banner_color = ACCENT_RED
+        elif was_healed:
+            self.anim_banner = f"🔥 ¡CONTRAATAQUE DEL DRAGÓN! -{self.state.last_counter} HP (mitigado por tu escudo)"
+            self.anim_banner_color = ACCENT_ORANGE
+        else:
+            furia = " EN FURIA" if (self.state.flags & 1) else ""
+            self.anim_banner = f"🔥 ¡EL DRAGÓN{furia} CONTRAATACA! -{self.state.last_counter} HP"
+            self.anim_banner_color = ACCENT_RED
+        self._draw_arena()
+        self.root.after(700, self._finish_turn_anim)
+
+    def _finish_turn_anim(self) -> None:
+        self.is_busy = False
+        if self.state.result == RESULT_DEFEAT:
+            self.anim_effect = "defeat"
+        elif self.state.result == RESULT_ONGOING:
+            self.anim_effect = None
+        self._render_all()
 
     def _clear_flash(self) -> None:
         if self.state.result == RESULT_ONGOING:
@@ -924,6 +991,8 @@ class DungeonRPGApp:
             self._draw_arena()
 
     def _reset_game(self) -> None:
+        if self.is_busy:
+            return
         self.state = GameState()
         self.anim_effect = None
         self.anim_banner = "¡Nuevo Duelo! Elegí tu acción para comenzar."
@@ -931,7 +1000,12 @@ class DungeonRPGApp:
         self.log_text.config(state=tk.NORMAL)
         self.log_text.delete("1.0", tk.END)
         self.log_text.config(state=tk.DISABLED)
-        self._append_log("[JUEGO] Nueva partida iniciada. Héroe (30 HP) vs Dragón (36 HP, Escudo=6).")
+        if self.use_fpga:
+            if self.client.resync():
+                self._append_log("[UART] FPGA reseteada y lista para la nueva partida.")
+            else:
+                self._append_log("[AVISO] La FPGA no respondió al reset. Presioná el botón BTNC en la placa.")
+        self._append_log("[JUEGO] Nueva partida iniciada. Héroe (30 HP) vs Dragón (75 HP, Escudo=8).")
         self._render_all()
 
     def _append_log(self, line: str) -> None:
@@ -1120,7 +1194,7 @@ class DungeonRPGApp:
         self._draw_hero(c, hx, hy)
         self._draw_monster(c, mx, my)
 
-        # Efecto visual de ataque / crítico
+        # Efecto visual de ataque / crítico del Héroe
         if self.anim_effect in ("attack", "crit"):
             col = ACCENT_YELLOW if self.anim_effect == "crit" else ACCENT_ORANGE
             c.create_line(hx + 75, hy - 18, mx - 45, my - 10, fill=col, width=5, arrow=tk.LAST)
@@ -1128,6 +1202,30 @@ class DungeonRPGApp:
                 mx, my - 10,
                 text=f"-{self.state.last_dmg}",
                 fill=col,
+                font=("Segoe UI", 22, "bold"),
+            )
+        # Efecto visual de curación del Héroe
+        elif self.anim_effect == "heal":
+            c.create_text(
+                hx, hy - 82,
+                text="+10 HP  +6 EN",
+                fill=ACCENT_GREEN,
+                font=("Segoe UI", 13, "bold"),
+            )
+        # Efecto visual del contraataque del Dragón (llamarada hacia el Héroe)
+        elif self.anim_effect == "dragon_attack":
+            # Destello rojo de impacto alrededor del Héroe
+            c.create_oval(hx - 56, hy - 66, hx + 56, hy + 60, outline=ACCENT_RED, width=4)
+            # Llamarada desde la boca del Dragón hacia el Héroe
+            c.create_line(mx - 36, my - 22, hx + 36, hy - 10, fill=ACCENT_RED, width=10, arrow=tk.LAST)
+            c.create_line(mx - 36, my - 22, hx + 36, hy - 10, fill=ACCENT_ORANGE, width=5)
+            c.create_line(mx - 36, my - 22, hx + 36, hy - 10, fill=ACCENT_YELLOW, width=2)
+            # Bola de fuego en el punto de impacto
+            c.create_oval(hx + 14, hy - 28, hx + 52, hy + 10, fill=ACCENT_ORANGE, outline=ACCENT_YELLOW, width=3)
+            c.create_text(
+                hx, hy - 84,
+                text=f"-{self.state.last_counter} HP",
+                fill=ACCENT_RED,
                 font=("Segoe UI", 22, "bold"),
             )
 

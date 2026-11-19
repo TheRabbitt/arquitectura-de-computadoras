@@ -444,6 +444,11 @@ class DebugUnitClient:
     # ------------------------------------------------------------------
     # Gestión de conexión serie
     # ------------------------------------------------------------------
+    @staticmethod
+    def list_available_ports() -> List[Tuple[str, str]]:
+        """Alias de `list_serial_ports()` para conveniencia desde interfaces GUI."""
+        return list_serial_ports()
+
     @property
     def is_connected(self) -> bool:
         return self._ser is not None and bool(self._ser.is_open)
@@ -555,6 +560,8 @@ class DebugUnitClient:
         """
         Envía `0x02 LOAD_PROG` + `uint16 N` + `N * uint32` palabras en Little-Endian.
         Permite programar y reprogramar dinámicamente la memoria de instrucciones.
+        Envía en bloques pequeños espaciados para dar respiro de línea idle al
+        receptor UART de la FPGA en programas largos (>100 instrucciones).
         """
         n_words = len(words)
         if n_words <= 0 or n_words > IMEM_MAX_WORDS:
@@ -566,18 +573,34 @@ class DebugUnitClient:
         ser = self._require_connection()
         ser.reset_input_buffer()
 
-        payload = bytearray()
-        payload.append(CMD_LOAD_PROG)
-        payload.extend(struct.pack("<H", n_words))
+        header = struct.pack("<BH", CMD_LOAD_PROG, n_words)
+        body = bytearray()
         for w in words:
-            payload.extend(struct.pack("<I", w & 0xFFFFFFFF))
+            body.extend(struct.pack("<I", w & 0xFFFFFFFF))
 
-        self._write_bytes(
-            bytes(payload),
-            f"CMD_LOAD_PROG (0x02) -> N={n_words} instrucciones ({len(payload)} bytes)",
+        total_bytes = len(header) + len(body)
+        hex_preview = " ".join(f"{b:02X}" for b in (header + bytes(body[:21])))
+        if total_bytes > 24:
+            hex_preview += f" ... ({total_bytes} B total)"
+        self._log(
+            "TX",
+            f"CMD_LOAD_PROG (0x02) -> N={n_words} instrucciones ({total_bytes} bytes) [{hex_preview}]",
         )
+
+        # Enviar cabecera y luego bloques de 16 bytes (4 palabras) con breve pausa
+        # para garantizar resincronización limpia del Start bit en programas largos.
+        ser.write(header)
+        ser.flush()
+        time.sleep(0.002)
+
+        chunk_size = 16
+        for i in range(0, len(body), chunk_size):
+            ser.write(body[i : i + chunk_size])
+            ser.flush()
+            time.sleep(0.0015)
+
         # Damos margen suficiente para la transmisión serie completa + escritura en BRAM
-        calc_timeout = max(self.timeout, 1.5 + (len(payload) * 10.0 / self.baudrate))
+        calc_timeout = max(self.timeout, 1.5 + (total_bytes * 10.0 / self.baudrate))
         rsp = self._read_exact(1, custom_timeout=calc_timeout)[0]
 
         if rsp == RSP_ACK:
@@ -587,6 +610,42 @@ class DebugUnitClient:
             self._log("RX", f"0x{rsp:02X} (NAK - Longitud N fuera de rango)")
             raise ProtocolError("La FPGA rechazó la carga del programa con NAK (0x5A).")
         raise ProtocolError(f"Respuesta inesperada a CMD_LOAD_PROG: 0x{rsp:02X}")
+
+    def resync(self, max_pad_bytes: int = 16) -> bool:
+        """
+        Intenta resincronizar la FSM de la Debug Unit si quedó esperando pocos
+        bytes de un comando interrumpido. Retorna True si responde a RESET.
+        """
+        ser = self._require_connection()
+        ser.reset_input_buffer()
+        # 1. Probar directamente RESET con timeout corto
+        try:
+            ser.write(bytes([CMD_RESET]))
+            ser.flush()
+            rsp = self._read_exact(1, custom_timeout=0.35)[0]
+            if rsp == RSP_ACK:
+                self._log("INFO", "Resincronización UART exitosa con CMD_RESET.")
+                return True
+        except ProtocolError:
+            pass
+
+        # 2. Si estaba esperando los últimos bytes de LOAD_PROG/DUMP_DMEM, drenar de a 1 byte
+        for _ in range(max_pad_bytes):
+            ser.write(b"\x00")
+            ser.flush()
+            time.sleep(0.005)
+            if ser.in_waiting > 0:
+                ser.read(ser.in_waiting)
+                try:
+                    ser.write(bytes([CMD_RESET]))
+                    ser.flush()
+                    rsp = self._read_exact(1, custom_timeout=0.35)[0]
+                    if rsp == RSP_ACK:
+                        self._log("INFO", "Debug Unit recuperada tras drenar bytes pendientes.")
+                        return True
+                except ProtocolError:
+                    pass
+        return False
 
     def step(self) -> int:
         """

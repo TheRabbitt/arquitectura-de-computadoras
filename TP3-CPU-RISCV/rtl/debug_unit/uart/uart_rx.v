@@ -26,15 +26,23 @@ module uart_rx #(
     reg [2:0] n_reg, n_next;              // Contador de bits (0-7)
     reg [DBIT-1:0] b_reg, b_next;         // Shift register para datos
 
+    // Sincronizador de 2 etapas para entrada asíncrona rx (evita metaestabilidad)
+    reg rx_sync_ff1, rx_sync_ff2;
+    wire rx_sync = rx_sync_ff2;
+
     // Registro de estado
     always @(posedge clk) begin
         if (reset) begin
+            rx_sync_ff1 <= 1'b1;
+            rx_sync_ff2 <= 1'b1;
             state_reg <= IDLE;
             s_reg <= 0;
             n_reg <= 0;
             b_reg <= 0;
         end
         else begin
+            rx_sync_ff1 <= rx;
+            rx_sync_ff2 <= rx_sync_ff1;
             state_reg <= state_next;
             s_reg <= s_next;
             n_reg <= n_next;
@@ -55,8 +63,8 @@ module uart_rx #(
             IDLE: begin
                 // Reiniciar contadores
                 n_next = 0;
-                // Paso 1: Esperar a que rx = 0 (inicio de bit de Start)
-                if (~rx) begin
+                // Paso 1: Esperar a que rx_sync = 0 (inicio de bit de Start)
+                if (~rx_sync) begin
                     state_next = START;
                     s_next = 0;
                 end
@@ -67,7 +75,7 @@ module uart_rx #(
                     if (s_reg == 7) begin
                         // Paso 2: En el medio del bit de Start (tick 7)
                         // Verificar que siga en 0 (Start bit válido)
-                        if (~rx) begin
+                        if (~rx_sync) begin
                             // Start bit válido, continuar
                             state_next = DATA;
                             s_next = 0;
@@ -90,7 +98,7 @@ module uart_rx #(
                         // Paso 3: En el medio del bit de datos (tick 15)
                         // Muestrear el bit y guardarlo en el shift register
                         s_next = 0;
-                        b_next = {rx, b_reg[DBIT-1:1]};  // Shift right, LSB first
+                        b_next = {rx_sync, b_reg[DBIT-1:1]};  // Shift right, LSB first
                         
                         if (n_reg == (DBIT - 1)) begin
                             // Paso 4: Ya recibimos todos los N bits
@@ -110,8 +118,8 @@ module uart_rx #(
                 if (s_tick) begin
                     if (s_reg == (SB_TICK - 1)) begin
                         // Paso 6: En el medio del bit de Stop
-                        // Verificar que el bit de Stop sea válido (rx=1)
-                        if (rx) begin
+                        // Verificar que el bit de Stop sea válido (rx_sync=1)
+                        if (rx_sync) begin
                             // Stop bit válido, recepción exitosa
                             state_next = IDLE;
                             rx_done_tick = 1'b1;  // Señal de dato recibido
