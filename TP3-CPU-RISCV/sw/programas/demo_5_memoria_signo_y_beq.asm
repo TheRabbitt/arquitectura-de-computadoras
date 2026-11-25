@@ -1,7 +1,6 @@
 # ==============================================================================
 # Programa 5: Subpalabras con Signo Negativo (LH/LB/SH/SB), BEQ y Load -> Branch
 # ==============================================================================
-# Cubre todas las operaciones de memoria y riesgo de salto faltantes en demo_1..demo_3:
 #   - sh en offset +0 (baja) y +2 (alta) sin pisar la otra media palabra
 #   - sb en offsets no nulos (+1 y +3)
 #   - lh y lb con MSB=1 (extienden con 1s) vs lhu y lbu (extienden con 0s)

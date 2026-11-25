@@ -1,7 +1,6 @@
 # ==============================================================================
 # Programa 4: ALU Completa — Resta, Shifts (SRA/SRL/SLL), Comparaciones y Lógica
 # ==============================================================================
-# Cubre todas las operaciones de la ALU no ejercitadas en demo_1..demo_3:
 #   - Resta con resultado negativo (sub)
 #   - Shifts aritméticos con MSB=1 (rellenan con 1s: srai, sra) vs lógicos (0s: srli, srl) y sll
 #   - Comparaciones con signo (slt, slti) vs sin signo (sltu, sltiu) sobre número negativo
